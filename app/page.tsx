@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { Camera, Upload, Sparkles, Loader2, ChevronDown, ChevronUp, Star, Clock, Scissors, Palette, Zap, Shield } from 'lucide-react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Camera, Upload, Sparkles, Loader2, ChevronDown, ChevronUp, Star, Clock, Scissors, Palette, Zap, Shield, Video, VideoOff, SwitchCamera, X } from 'lucide-react';
 import { analyzeWithGemini, analyzeColorWithGemini, AnalysisResult, ColorAnalysisResult } from '@/utils/geminiService';
 
 type AnalysisMode = 'hairstyle' | 'color';
+type CaptureMode = 'upload' | 'camera';
 
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
@@ -15,7 +16,129 @@ export default function Home() {
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showApp, setShowApp] = useState(false);
+  
+  // Camera states
+  const [captureMode, setCaptureMode] = useState<CaptureMode>('camera');
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Check for multiple cameras
+  useEffect(() => {
+    const checkCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        setHasMultipleCameras(videoDevices.length > 1);
+      } catch (err) {
+        console.log('Could not enumerate devices:', err);
+      }
+    };
+    checkCameras();
+  }, []);
+
+  // Cleanup camera on unmount or when switching modes
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  const startCamera = async () => {
+    setCameraError(null);
+    
+    try {
+      // Stop any existing stream
+      stopCamera();
+      
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setIsCameraActive(true);
+      }
+    } catch (err: any) {
+      console.error('Camera error:', err);
+      if (err.name === 'NotAllowedError') {
+        setCameraError('Camera access denied. Please allow camera access in your browser settings.');
+      } else if (err.name === 'NotFoundError') {
+        setCameraError('No camera found on this device.');
+      } else {
+        setCameraError('Could not access camera. Please try again.');
+      }
+      setIsCameraActive(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const switchCamera = async () => {
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newFacingMode);
+    
+    if (isCameraActive) {
+      stopCamera();
+      setTimeout(() => {
+        startCamera();
+      }, 100);
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    
+    if (!context) return;
+    
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Mirror the image if using front camera
+    if (facingMode === 'user') {
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
+    }
+    
+    // Draw the video frame
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert to base64
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
+    setImage(imageData);
+    stopCamera();
+    setAnalysisResult(null);
+    setColorResult(null);
+    setError(null);
+  };
 
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -66,6 +189,7 @@ export default function Home() {
     setColorResult(null);
     setError(null);
     setExpandedCard(null);
+    stopCamera();
   };
 
   const getScoreColor = (score: number) => {
@@ -110,7 +234,7 @@ export default function Home() {
               </h1>
               <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
                 Discover your perfect hairstyle with AI-powered face analysis.
-                Upload a photo and get personalized recommendations in seconds.
+                Take a selfie or upload a photo and get personalized recommendations in seconds.
               </p>
             </div>
 
@@ -131,11 +255,11 @@ export default function Home() {
             <div className="grid md:grid-cols-3 gap-8 mb-16">
               <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
                 <div className="w-14 h-14 bg-purple-100 rounded-xl flex items-center justify-center mb-5">
-                  <Scissors className="w-7 h-7 text-purple-600" />
+                  <Video className="w-7 h-7 text-purple-600" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-800 mb-3">Hairstyle Analysis</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-3">Live Camera</h3>
                 <p className="text-gray-600">
-                  AI analyzes your face shape, features, and current hair to recommend 6 perfect hairstyles tailored just for you.
+                  Take a selfie directly with your phone or laptop camera. No need to upload - just snap and analyze!
                 </p>
               </div>
 
@@ -168,8 +292,8 @@ export default function Home() {
                   <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold shadow-lg">
                     1
                   </div>
-                  <h3 className="font-semibold text-lg text-gray-800 mb-2">Upload Photo</h3>
-                  <p className="text-gray-600">Take a selfie or upload an existing photo. Clear, front-facing works best.</p>
+                  <h3 className="font-semibold text-lg text-gray-800 mb-2">Take a Selfie</h3>
+                  <p className="text-gray-600">Use your camera to take a live photo or upload an existing one. Front-facing works best.</p>
                 </div>
                 <div className="text-center">
                   <div className="w-16 h-16 bg-gradient-to-br from-pink-500 to-pink-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold shadow-lg">
@@ -209,11 +333,14 @@ export default function Home() {
   // Main App Interface
   return (
     <main className="min-h-screen py-8 px-4">
+      {/* Hidden canvas for photo capture */}
+      <canvas ref={canvasRef} className="hidden" />
+      
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-10">
           <button 
-            onClick={() => setShowApp(false)}
+            onClick={() => { setShowApp(false); stopCamera(); }}
             className="flex items-center justify-center gap-3 mb-4 mx-auto hover:opacity-80 transition-opacity"
           >
             <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-lg">
@@ -224,7 +351,7 @@ export default function Home() {
             </h1>
           </button>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            Upload your photo and discover personalized hairstyle and color recommendations
+            Take a selfie or upload your photo for personalized recommendations
           </p>
         </div>
 
@@ -260,28 +387,140 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Upload Section */}
+        {/* Capture Section */}
         {!image ? (
           <div className="max-w-xl mx-auto">
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-purple-300 rounded-3xl p-12 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 transition-all group"
-            >
-              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Camera className="w-10 h-10 text-purple-600" />
+            {/* Camera/Upload Toggle */}
+            <div className="flex justify-center mb-6">
+              <div className="inline-flex rounded-xl bg-purple-100 p-1">
+                <button
+                  onClick={() => { setCaptureMode('camera'); stopCamera(); }}
+                  className={`px-5 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
+                    captureMode === 'camera'
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'text-purple-700 hover:bg-purple-200'
+                  }`}
+                >
+                  <Video className="w-4 h-4" />
+                  Live Camera
+                </button>
+                <button
+                  onClick={() => { setCaptureMode('upload'); stopCamera(); }}
+                  className={`px-5 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
+                    captureMode === 'upload'
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'text-purple-700 hover:bg-purple-200'
+                  }`}
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload Photo
+                </button>
               </div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">Upload Your Photo</h3>
-              <p className="text-gray-500 mb-4">Click to select or drag and drop</p>
-              <p className="text-sm text-gray-400">Supports JPG, PNG up to 10MB</p>
-              <p className="text-xs text-purple-500 mt-4">💡 Tip: Use a clear, front-facing photo for best results</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
             </div>
+
+            {captureMode === 'camera' ? (
+              <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+                {!isCameraActive ? (
+                  <div className="p-12 text-center">
+                    <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center">
+                      <Camera className="w-12 h-12 text-purple-600" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">Ready to Take a Selfie?</h3>
+                    <p className="text-gray-500 mb-6">Position your face clearly in the frame for best results</p>
+                    
+                    {cameraError && (
+                      <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+                        {cameraError}
+                      </div>
+                    )}
+                    
+                    <button
+                      onClick={startCamera}
+                      className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-3 mx-auto"
+                    >
+                      <Video className="w-6 h-6" />
+                      Start Camera
+                    </button>
+                    
+                    <p className="text-xs text-gray-400 mt-4">
+                      📸 Works on mobile &amp; desktop browsers
+                    </p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    {/* Video Preview */}
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`w-full h-auto max-h-[500px] object-cover ${
+                        facingMode === 'user' ? 'scale-x-[-1]' : ''
+                      }`}
+                    />
+                    
+                    {/* Camera Controls Overlay */}
+                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent">
+                      <div className="flex items-center justify-center gap-4">
+                        {/* Switch Camera Button (only if multiple cameras) */}
+                        {hasMultipleCameras && (
+                          <button
+                            onClick={switchCamera}
+                            className="p-3 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-white/30 transition-all"
+                            title="Switch Camera"
+                          >
+                            <SwitchCamera className="w-6 h-6" />
+                          </button>
+                        )}
+                        
+                        {/* Capture Button */}
+                        <button
+                          onClick={capturePhoto}
+                          className="p-5 bg-white rounded-full shadow-xl hover:scale-110 transition-transform"
+                          title="Take Photo"
+                        >
+                          <Camera className="w-8 h-8 text-purple-600" />
+                        </button>
+                        
+                        {/* Stop Camera Button */}
+                        <button
+                          onClick={stopCamera}
+                          className="p-3 bg-white/20 backdrop-blur-sm text-white rounded-full hover:bg-red-500/50 transition-all"
+                          title="Stop Camera"
+                        >
+                          <X className="w-6 h-6" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Guide Frame */}
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                      <div className="w-64 h-80 border-2 border-white/30 rounded-full"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-purple-300 rounded-3xl p-12 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 transition-all group bg-white shadow-lg"
+              >
+                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Upload className="w-10 h-10 text-purple-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-800 mb-2">Upload Your Photo</h3>
+                <p className="text-gray-500 mb-4">Click to select or drag and drop</p>
+                <p className="text-sm text-gray-400">Supports JPG, PNG up to 10MB</p>
+                <p className="text-xs text-purple-500 mt-4">💡 Tip: Use a clear, front-facing photo for best results</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid lg:grid-cols-2 gap-8">
@@ -290,7 +529,7 @@ export default function Home() {
               <div className="relative rounded-2xl overflow-hidden shadow-xl bg-white p-2">
                 <img
                   src={image}
-                  alt="Uploaded"
+                  alt="Captured"
                   className="w-full h-auto rounded-xl object-cover max-h-[500px]"
                 />
                 {isAnalyzing && (
@@ -325,8 +564,8 @@ export default function Home() {
                   onClick={resetAnalysis}
                   className="py-3 px-6 border-2 border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center gap-2"
                 >
-                  <Upload className="w-5 h-5" />
-                  New Photo
+                  <Camera className="w-5 h-5" />
+                  Retake
                 </button>
               </div>
 
