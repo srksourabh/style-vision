@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StyleVision Kiosk",
-  description: "Premium Salon Experience",
+  title: "StyleVision - AI Beauty Analysis",
+  description: "AI-Powered Hair, Color & Bridal Style Analysis",
 };
 
 export default function RootLayout({
@@ -23,9 +23,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased h-screen w-screen overflow-hidden bg-[#0f0c29] text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen w-full bg-slate-950 text-white`}
       >
         {children}
       </body>

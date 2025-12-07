@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Hairstyle, AnalysisResult } from "@/utils/analysisEngine";
-import { X, Printer, CheckCircle, Smartphone } from "lucide-react";
+import { X, Printer, Sparkles, User, ArrowLeft, Download, Heart, Star, Info, Lightbulb } from "lucide-react";
 
 interface ResultsGalleryProps {
     analysis: AnalysisResult;
@@ -12,199 +12,376 @@ interface ResultsGalleryProps {
 
 export default function ResultsGallery({ analysis, userImage, onReset }: ResultsGalleryProps) {
     const [selectedStyle, setSelectedStyle] = useState<Hairstyle | null>(null);
+    const [likedStyles, setLikedStyles] = useState<Set<string>>(new Set());
 
-    // Helper to generate a consistent "Match Score"
-    const getMatchScore = (id: string) => {
-        // Generate a pseudo-random score between 88 and 99 based on ID char code
-        const seed = id.charCodeAt(0) + id.charCodeAt(1);
-        return 88 + (seed % 12);
+    // Get match score - prefer actual score from analysis, fallback to generated
+    const getMatchScore = (style: Hairstyle): number => {
+        if (style.matchScore) return style.matchScore;
+        // Fallback: generate based on ID for consistency
+        const seed = style.id.charCodeAt(0) + (style.id.charCodeAt(1) || 0);
+        return 78 + (seed % 22);
+    };
+
+    const toggleLike = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setLikedStyles(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) {
+                newSet.delete(id);
+            } else {
+                newSet.add(id);
+            }
+            return newSet;
+        });
     };
 
     const handlePrint = () => {
         window.print();
     };
 
-    return (
-        <div className="w-full h-full flex flex-col pt-20 pb-10 px-6 overflow-hidden relative">
+    // Get the best match score for display
+    const bestMatchScore = Math.max(...analysis.recommendedStyles.map(s => getMatchScore(s)));
 
-            {/* Header */}
+    return (
+        <div className="relative w-full min-h-screen overflow-x-hidden">
+            
+            {/* Animated Background */}
+            <div className="fixed inset-0 -z-10">
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-slate-100"></div>
+                <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-gradient-to-br from-teal-200/30 to-cyan-200/20 rounded-full blur-[100px] animate-float-slow"></div>
+                <div className="absolute bottom-[-20%] right-[-10%] w-[700px] h-[700px] bg-gradient-to-br from-purple-200/30 to-pink-200/20 rounded-full blur-[120px] animate-float-slow animation-delay-2000"></div>
+            </div>
+
+            {/* Gallery View */}
             {!selectedStyle && (
-                <div className="text-center mb-8 space-y-2 animate-in slide-in-from-top fade-in duration-700">
-                    <h2 className="text-4xl font-bold text-white">
-                        Recommended Styles for <span className="text-teal-400">{analysis.faceShape}</span> Face
-                    </h2>
-                    <p className="text-purple-200/70 text-lg">
-                        Based on your {analysis.jawline.toLowerCase()} jawline and {analysis.skinTone.toLowerCase()} skin tone
-                    </p>
+                <div className="relative z-10 w-full max-w-7xl mx-auto px-6 py-8 animate-fade-in-up">
+                    
+                    {/* Header */}
+                    <div className="flex items-start justify-between mb-8">
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={onReset}
+                                className="p-3 bg-white/80 hover:bg-white backdrop-blur-md rounded-xl border border-slate-200/50 shadow-sm hover:shadow-md transition-all no-print"
+                            >
+                                <ArrowLeft className="w-5 h-5 text-slate-700" />
+                            </button>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="px-3 py-1 bg-gradient-to-r from-teal-500 to-purple-500 text-white text-xs font-bold rounded-full">
+                                        AI Analysis Complete
+                                    </span>
+                                    <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
+                                        Powered by Gemini
+                                    </span>
+                                </div>
+                                <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">
+                                    Your Perfect Styles
+                                </h1>
+                            </div>
+                        </div>
+                        
+                        {/* User Badge */}
+                        <div className="hidden md:flex items-center gap-3 px-4 py-2 bg-white/80 backdrop-blur-md rounded-xl border border-slate-200/50 shadow-sm">
+                            <img src={userImage} alt="You" className="w-10 h-10 rounded-lg object-cover" />
+                            <div>
+                                <p className="text-sm font-semibold text-slate-800">{analysis.faceShape} Face</p>
+                                <p className="text-xs text-slate-500">{analysis.recommendedStyles.length} AI recommendations</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Analysis Info Card */}
+                    <div className="mb-8 p-6 bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200/50 shadow-sm">
+                        <div className="flex flex-col md:flex-row md:items-center gap-6">
+                            <div className="flex-1">
+                                <p className="text-lg text-slate-600">
+                                    Based on your photo, you have <span className="font-bold text-teal-600">{analysis.faceShapeDescription || `a ${analysis.faceShape} shaped face`}</span>
+                                </p>
+                                {analysis.stylingRule && (
+                                    <div className="mt-4 flex items-start gap-3 p-4 bg-amber-50/80 rounded-xl border border-amber-100/50">
+                                        <Sparkles className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                                        <p className="text-amber-800 font-medium">{analysis.stylingRule}</p>
+                                    </div>
+                                )}
+                                {analysis.hairType && (
+                                    <p className="mt-3 text-sm text-slate-500">
+                                        Hair type detected: <span className="font-medium text-slate-700">{analysis.hairType}</span>
+                                    </p>
+                                )}
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="text-center px-6 py-4 bg-slate-50 rounded-xl">
+                                    <p className="text-3xl font-black text-slate-800">{analysis.recommendedStyles.length}</p>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider">Styles</p>
+                                </div>
+                                <div className="text-center px-6 py-4 bg-teal-50 rounded-xl">
+                                    <p className="text-3xl font-black text-teal-600">{bestMatchScore}%</p>
+                                    <p className="text-xs text-slate-500 uppercase tracking-wider">Best Match</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Styles Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-8">
+                        {analysis.recommendedStyles.map((style, idx) => {
+                            const matchScore = getMatchScore(style);
+                            const isLiked = likedStyles.has(style.id);
+                            
+                            return (
+                                <div
+                                    key={style.id}
+                                    onClick={() => setSelectedStyle(style)}
+                                    className="group relative cursor-pointer animate-fade-in-up"
+                                    style={{ animationDelay: `${idx * 75}ms` }}
+                                >
+                                    {/* Glow Effect */}
+                                    <div className="absolute -inset-1 bg-gradient-to-r from-teal-500/30 to-purple-500/30 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                    
+                                    {/* Card */}
+                                    <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-white border border-slate-200/50 shadow-sm group-hover:shadow-2xl transition-all duration-500 group-hover:-translate-y-2">
+                                        
+                                        {/* Image */}
+                                        <img
+                                            src={style.imageUrl}
+                                            alt={style.name}
+                                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                        />
+
+                                        {/* Top Actions */}
+                                        <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-10">
+                                            {/* Match Badge */}
+                                            <div className={`px-3 py-1.5 rounded-full text-sm font-bold shadow-lg flex items-center gap-1 ${
+                                                matchScore >= 90 
+                                                    ? 'bg-gradient-to-r from-teal-400 to-emerald-400 text-white' 
+                                                    : matchScore >= 80 
+                                                        ? 'bg-white text-teal-600' 
+                                                        : 'bg-white/90 backdrop-blur-sm text-slate-700'
+                                            }`}>
+                                                {matchScore >= 90 && <Star className="w-3 h-3 fill-current" />}
+                                                {matchScore}% Match
+                                            </div>
+                                            
+                                            {/* Like Button */}
+                                            <button
+                                                onClick={(e) => toggleLike(style.id, e)}
+                                                className={`p-2 rounded-full shadow-lg transition-all ${
+                                                    isLiked 
+                                                        ? 'bg-red-500 text-white scale-110' 
+                                                        : 'bg-white/90 backdrop-blur-sm text-slate-400 hover:text-red-500'
+                                                }`}
+                                            >
+                                                <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
+                                            </button>
+                                        </div>
+
+                                        {/* Gradient Overlay */}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent"></div>
+
+                                        {/* Content */}
+                                        <div className="absolute bottom-0 left-0 right-0 p-5">
+                                            <h3 className="text-xl font-bold text-white mb-2 drop-shadow-lg">
+                                                {style.name}
+                                            </h3>
+                                            <p className="text-white/70 text-sm line-clamp-2 mb-3">
+                                                {style.theLook}
+                                            </p>
+                                            
+                                            {/* CTA */}
+                                            <div className="flex items-center gap-2 text-teal-400 font-semibold text-sm opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                                                <Info className="w-4 h-4" />
+                                                <span>View Details</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
-            {/* Horizontal Scroll Gallery */}
-            <div
-                className={`
-          flex-1 flex items-center space-x-8 overflow-x-auto pb-8 
-          snap-x snap-mandatory scroll-smooth 
-          ${selectedStyle ? 'opacity-0 pointer-events-none absolute' : 'opacity-100'}
-          transition-opacity duration-500
-        `}
-            >
-                {analysis.recommendedStyles.map((style, idx) => (
-                    <div
-                        key={style.id}
-                        onClick={() => setSelectedStyle(style)}
-                        className="
-              relative flex-shrink-0 w-[350px] h-[500px] rounded-[2.5rem] overflow-hidden 
-              snap-center group cursor-pointer 
-              border border-white/10 hover:border-teal-400/50 
-              transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_50px_rgba(45,212,191,0.2)]
-            "
-                        style={{ animationDelay: `${idx * 100}ms` }}
-                    >
-                        {/* Image */}
-                        <img
-                            src={style.imageUrl}
-                            alt={style.name}
-                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                        />
-
-                        {/* Gradient Overlay */}
-                        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
-
-                        {/* Content */}
-                        <div className="absolute bottom-0 w-full p-8 space-y-3">
-                            <div className="flex items-center space-x-2">
-                                <span className="px-3 py-1 text-xs font-bold text-black bg-teal-400 rounded-full">
-                                    {getMatchScore(style.id)}% Match
-                                </span>
-                            </div>
-                            <h3 className="text-3xl font-bold text-white leading-tight">
-                                {style.name}
-                            </h3>
-                        </div>
-                    </div>
-                ))}
-
-                {/* Reset / Back Card */}
-                <div
-                    onClick={onReset}
-                    className="
-             flex-shrink-0 w-[200px] h-[500px] rounded-[2.5rem] 
-             flex flex-col items-center justify-center space-y-4
-             bg-white/5 border border-white/10 cursor-pointer
-             hover:bg-white/10 transition-colors
-           "
-                >
-                    <div className="p-4 rounded-full bg-white/10">
-                        <X className="w-8 h-8 text-white" />
-                    </div>
-                    <span className="text-white font-medium">Start Over</span>
-                </div>
-            </div>
-
-            {/* Full Screen Detail Modal */}
+            {/* Detail Modal */}
             {selectedStyle && (
-                <div className="fixed inset-0 z-50 bg-[#0f0c29] animate-in zoom-in-95 duration-300 flex overflow-hidden">
-
+                <div className="fixed inset-0 z-50 bg-white animate-fade-in-scale overflow-hidden">
+                    
                     {/* Close Button */}
                     <button
                         onClick={() => setSelectedStyle(null)}
-                        className="absolute top-6 right-6 z-50 p-3 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md transition no-print"
+                        className="fixed top-6 right-6 z-50 p-3 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-700 transition-all shadow-lg no-print"
                     >
-                        <X className="w-8 h-8" />
+                        <X className="w-6 h-6" />
                     </button>
 
-                    {/* Content Grid */}
-                    <div className="flex w-full h-full">
+                    <div className="flex flex-col lg:flex-row w-full h-full overflow-hidden">
 
-                        {/* Left: Visuals */}
-                        <div className="w-1/2 h-full relative p-8 print:w-[40%]">
-                            <div className="relative w-full h-full rounded-[3rem] overflow-hidden shadow-2xl border border-white/10">
-                                <img
-                                    src={selectedStyle.imageUrl}
-                                    alt={selectedStyle.name}
-                                    className="w-full h-full object-cover"
-                                />
-
-                                {/* Overlay User Image Badge (Optional) */}
-                                <div className="absolute bottom-6 right-6 w-32 h-32 rounded-2xl overflow-hidden border-2 border-white shadow-lg no-print">
-                                    <img src={userImage} alt="You" className="w-full h-full object-cover" />
+                        {/* Left: Visual Comparison */}
+                        <div className="w-full lg:w-1/2 h-[40vh] lg:h-full p-6 lg:p-8 bg-slate-50/50 flex flex-col gap-4 lg:gap-6">
+                            
+                            {/* Your Photo */}
+                            <div className="relative flex-1 rounded-2xl lg:rounded-[2rem] overflow-hidden shadow-lg border border-slate-200/50">
+                                <img src={userImage} alt="Your Face" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent"></div>
+                                
+                                <div className="absolute top-4 left-4">
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur-md rounded-full shadow-sm">
+                                        <User className="w-4 h-4 text-teal-600" />
+                                        <span className="text-sm font-semibold text-slate-800">Your Photo</span>
+                                    </div>
                                 </div>
+                                
+                                <div className="absolute bottom-4 left-4">
+                                    <span className="px-4 py-2 bg-slate-900/80 backdrop-blur-md rounded-xl text-white font-semibold">
+                                        {analysis.faceShape} Face Shape
+                                    </span>
+                                </div>
+                            </div>
 
-                                <div className="absolute top-6 left-6 no-print">
-                                    <span className="px-5 py-2 text-xl font-bold text-black bg-teal-400 rounded-full shadow-lg">
-                                        {getMatchScore(selectedStyle.id)}% Match
+                            {/* Style Photo */}
+                            <div className="relative flex-1 rounded-2xl lg:rounded-[2rem] overflow-hidden shadow-lg border border-slate-200/50">
+                                <img src={selectedStyle.imageUrl} alt={selectedStyle.name} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent"></div>
+                                
+                                <div className="absolute top-4 left-4">
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur-md rounded-full shadow-sm">
+                                        <Sparkles className="w-4 h-4 text-purple-600" />
+                                        <span className="text-sm font-semibold text-slate-800">AI Recommended</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="absolute bottom-4 left-4">
+                                    <span className="px-4 py-2 bg-gradient-to-r from-teal-500 to-purple-500 rounded-xl text-white font-bold shadow-lg">
+                                        {getMatchScore(selectedStyle)}% Match
                                     </span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Right: Dashboard */}
-                        <div className="w-1/2 h-full p-8 pl-0 overflow-y-auto print:w-[60%] print:p-8">
-                            <div className="h-full bg-white/5 backdrop-blur-sm rounded-[3rem] border border-white/10 p-10 flex flex-col space-y-10 print:bg-white print:border-black print:text-black">
-
-                                {/* Title Header */}
+                        {/* Right: Details Panel */}
+                        <div className="w-full lg:w-1/2 h-[60vh] lg:h-full overflow-y-auto">
+                            <div className="p-6 lg:p-10 space-y-8">
+                                
+                                {/* Header */}
                                 <div>
-                                    <h2 className="text-5xl font-bold text-white mb-2 print:text-black">{selectedStyle.name}</h2>
-                                    <div className="flex items-center space-x-4 text-purple-200 print:text-gray-600">
-                                        <span className="uppercase tracking-widest text-sm font-semibold">StyleVision Analysis</span>
-                                        <div className="h-1 w-1 rounded-full bg-purple-200"></div>
-                                        <span className="capitalize">{analysis.faceShape} Face</span>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className="px-3 py-1 bg-teal-100 text-teal-700 text-xs font-bold rounded-full uppercase tracking-wider">
+                                            AI Recommended
+                                        </span>
+                                        {getMatchScore(selectedStyle) >= 90 && (
+                                            <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full uppercase tracking-wider flex items-center gap-1">
+                                                <Star className="w-3 h-3 fill-current" />
+                                                Top Pick
+                                            </span>
+                                        )}
+                                    </div>
+                                    <h2 className="text-4xl lg:text-5xl font-black text-slate-900 tracking-tight mb-2">
+                                        {selectedStyle.name}
+                                    </h2>
+                                    <p className="text-slate-500">
+                                        Perfect for <span className="font-semibold">{analysis.faceShape}</span> face shapes • 
+                                        <span className="ml-1 text-teal-600 font-semibold">{getMatchScore(selectedStyle)}% match</span>
+                                    </p>
+                                </div>
+
+                                {/* The Look */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-teal-500"></div>
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">The Look</h3>
+                                    </div>
+                                    <p className="text-xl text-slate-700 leading-relaxed font-medium">
+                                        {selectedStyle.theLook}
+                                    </p>
+                                </div>
+
+                                {/* Why It Works */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Why It Works For You</h3>
+                                    </div>
+                                    <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100/50">
+                                        <p className="text-lg text-slate-700 leading-relaxed">
+                                            {selectedStyle.whyItWorks}
+                                        </p>
                                     </div>
                                 </div>
 
-                                {/* Section A: Why this works */}
-                                <div className="space-y-4">
-                                    <h3 className="text-xl text-teal-300 font-medium uppercase tracking-wider flex items-center space-x-2 print:text-black">
-                                        <CheckCircle className="w-5 h-5" />
-                                        <span>Why It Suits You</span>
-                                    </h3>
-                                    <p className="text-2xl text-white/90 leading-relaxed font-light print:text-black">
-                                        {selectedStyle.suitabilityReason}
-                                    </p>
+                                {/* What To Ask For */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">What To Ask For</h3>
+                                    </div>
+                                    <div className="p-5 bg-slate-50 rounded-2xl border-l-4 border-purple-500">
+                                        <p className="text-lg italic text-slate-700 font-serif">
+                                            "{selectedStyle.whatToAskFor}"
+                                        </p>
+                                    </div>
                                 </div>
 
-                                {/* Section B: Expert Tip */}
-                                <div className="p-6 bg-purple-500/10 rounded-3xl border border-purple-500/20 print:border-black print:bg-gray-100">
-                                    <h3 className="text-sm text-purple-300 font-bold uppercase tracking-wider mb-3 print:text-gray-700">
-                                        Pro Tip
-                                    </h3>
-                                    <p className="text-lg text-white italic font-serif print:text-black">
-                                        "{selectedStyle.expertTip}"
-                                    </p>
-                                </div>
+                                {/* Expert Tip */}
+                                {selectedStyle.expertTip && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <Lightbulb className="w-4 h-4 text-amber-500" />
+                                            <h3 className="text-sm font-bold text-amber-600 uppercase tracking-widest">Expert Tip</h3>
+                                        </div>
+                                        <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-100/50">
+                                            <p className="text-slate-700">{selectedStyle.expertTip}</p>
+                                        </div>
+                                    </div>
+                                )}
 
-                                {/* Section C: Instructions */}
-                                <div className="flex-1">
-                                    <h3 className="text-xl text-teal-300 font-medium uppercase tracking-wider mb-6 print:text-black">
-                                        Stylist Instructions
-                                    </h3>
-                                    <ul className="space-y-4">
-                                        {selectedStyle.instructions.map((step, i) => (
-                                            <li key={i} className="flex items-start space-x-4">
-                                                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm font-bold text-white print:text-black print:bg-gray-200">
-                                                    {i + 1}
-                                                </span>
-                                                <span className="text-lg text-white/80 print:text-black">{step}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
+                                {/* Instructions */}
+                                {selectedStyle.instructions && selectedStyle.instructions.length > 0 && (
+                                    <div className="space-y-4 pt-6 border-t border-slate-100">
+                                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">How to Style</h3>
+                                        <div className="space-y-3">
+                                            {selectedStyle.instructions.map((step, i) => (
+                                                <div key={i} className="flex items-start gap-4">
+                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-teal-100 to-purple-100 flex items-center justify-center flex-shrink-0">
+                                                        <span className="text-sm font-bold text-slate-600">{i + 1}</span>
+                                                    </div>
+                                                    <p className="text-slate-600 pt-1">{step}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
-                                {/* Action Footer (No Print) */}
-                                <div className="pt-8 border-t border-white/10 flex items-center space-x-4 no-print">
-                                    <button
+                                {/* Key Tips from Analysis */}
+                                {analysis.keyTips && analysis.keyTips.length > 0 && (
+                                    <div className="space-y-4 pt-6 border-t border-slate-100">
+                                        <div className="flex items-center gap-2">
+                                            <Sparkles className="w-5 h-5 text-teal-500" />
+                                            <h3 className="text-sm font-bold text-teal-600 uppercase tracking-widest">Pro Tips for Your Face Shape</h3>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {analysis.keyTips.map((tip, i) => (
+                                                <div key={i} className="flex items-start gap-3 p-4 bg-teal-50/50 rounded-xl border border-teal-100/50">
+                                                    <span className="text-lg">💡</span>
+                                                    <p className="text-slate-700">{tip}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Actions */}
+                                <div className="flex gap-4 pt-6 border-t border-slate-100 no-print">
+                                    <button 
                                         onClick={handlePrint}
-                                        className="flex-1 flex items-center justify-center space-x-3 h-16 bg-white text-black hover:bg-gray-200 rounded-2xl font-bold text-lg transition"
+                                        className="flex-1 flex items-center justify-center gap-2 py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
                                     >
-                                        <Printer className="w-6 h-6" />
-                                        <span>Print Guide</span>
+                                        <Printer className="w-5 h-5" />
+                                        Print Card
                                     </button>
-                                    <button className="flex-1 flex items-center justify-center space-x-3 h-16 bg-transparent border border-white/20 hover:bg-white/5 text-white rounded-2xl font-bold text-lg transition">
-                                        <Smartphone className="w-6 h-6" />
-                                        <span>Send to Phone</span>
+                                    <button className="flex-1 flex items-center justify-center gap-2 py-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl border border-slate-200 transition-all">
+                                        <Download className="w-5 h-5" />
+                                        Save
                                     </button>
                                 </div>
-
                             </div>
                         </div>
                     </div>

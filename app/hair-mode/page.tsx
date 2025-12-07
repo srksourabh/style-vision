@@ -1,77 +1,168 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import CameraCapture from "@/components/CameraCapture";
 import ResultsGallery from "@/components/ResultsGallery";
 import { analyzeFace, AnalysisResult } from "@/utils/analysisEngine";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Sparkles, ScanFace, Brain, Palette } from "lucide-react";
 import Link from "next/link";
 
 export default function HairModePage() {
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+    const [loadingStep, setLoadingStep] = useState(0);
+
+    const loadingSteps = [
+        { icon: ScanFace, text: "Detecting facial features...", color: "text-teal-400" },
+        { icon: Brain, text: "Analyzing face shape with AI...", color: "text-purple-400" },
+        { icon: Palette, text: "Matching perfect styles...", color: "text-amber-400" },
+        { icon: Sparkles, text: "Generating personalized recommendations...", color: "text-pink-400" }
+    ];
 
     const handleCapture = async (imageData: string) => {
         setCapturedImage(imageData);
         setIsAnalyzing(true);
+        setLoadingStep(0);
 
-        // Trigger Analysis
-        const result = await analyzeFace(imageData);
-        setAnalysisResult(result);
-        setIsAnalyzing(false);
+        // Animate through loading steps
+        const stepInterval = setInterval(() => {
+            setLoadingStep(prev => (prev < loadingSteps.length - 1 ? prev + 1 : prev));
+        }, 1500);
+
+        try {
+            const result = await analyzeFace(imageData);
+            clearInterval(stepInterval);
+            setAnalysisResult(result);
+        } catch (error) {
+            console.error('Analysis error:', error);
+            clearInterval(stepInterval);
+        } finally {
+            setIsAnalyzing(false);
+        }
     };
 
     const handleReset = () => {
         setCapturedImage(null);
         setAnalysisResult(null);
         setIsAnalyzing(false);
+        setLoadingStep(0);
     };
 
     return (
-        <main className="relative flex flex-col w-full h-screen bg-[#0f0c29] overflow-hidden">
+        <main className="relative flex flex-col w-full min-h-screen bg-white overflow-hidden">
 
-            {/* View Switcher */}
             {!capturedImage ? (
                 <>
-                    {/* Header / Nav (Only visible on Camera Screen) */}
+                    {/* Header */}
                     <div className="absolute top-0 left-0 w-full p-6 z-50 flex items-center justify-between pointer-events-none">
                         <Link href="/" className="pointer-events-auto">
-                            <button className="flex items-center space-x-2 text-white/70 hover:text-white transition bg-black/20 backdrop-blur-md px-4 py-2 rounded-full">
-                                <ArrowLeft className="w-5 h-5" />
-                                <span className="font-medium">Back to Home</span>
+                            <button className="group flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-xl rounded-full text-white/80 hover:text-white border border-white/10 transition-all shadow-lg">
+                                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                                <span className="font-medium">Back</span>
                             </button>
                         </Link>
-                        <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-teal-200 to-purple-300">
-                            Hair Mode Analysis
-                        </h1>
-                        <div className="w-20"></div>
+                        
+                        <div className="flex items-center gap-3 px-5 py-2.5 bg-white/10 backdrop-blur-xl rounded-full border border-white/10">
+                            <div className="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></div>
+                            <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-rose-400 to-orange-400">
+                                Hair Mode
+                            </span>
+                        </div>
+                        
+                        <div className="w-24"></div>
                     </div>
 
-                    <div className="flex-1 w-full h-full">
-                        <CameraCapture onCapture={handleCapture} />
+                    <div className="flex-1 w-full h-screen">
+                        <CameraCapture onCapture={handleCapture} mode="hair" />
                     </div>
                 </>
             ) : (
-                <div className="w-full h-full relative">
+                <div className="w-full min-h-screen relative">
 
                     {/* Analysis Loading Screen */}
                     {isAnalyzing && (
-                        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0f0c29]">
-                            <div className="relative w-64 h-64">
-                                {/* Pulse Effect */}
-                                <div className="absolute inset-0 bg-teal-500/20 rounded-full animate-ping"></div>
-                                <div className="absolute inset-0 border-4 border-t-teal-400 border-r-purple-500 border-b-teal-400 border-l-purple-500 rounded-full animate-spin"></div>
-                                <div className="absolute inset-4 rounded-full overflow-hidden border-2 border-white/20">
-                                    <img src={capturedImage} alt="Analyzing" className="w-full h-full object-cover opacity-50" />
+                        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
+                            
+                            {/* Animated Background */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+                                <div className="absolute top-[-30%] left-[-20%] w-[800px] h-[800px] bg-gradient-to-br from-teal-500/20 to-cyan-500/10 rounded-full blur-[150px] animate-float-slow"></div>
+                                <div className="absolute bottom-[-30%] right-[-20%] w-[900px] h-[900px] bg-gradient-to-br from-purple-500/20 to-pink-500/10 rounded-full blur-[180px] animate-float-slow animation-delay-2000"></div>
+                            </div>
+
+                            <div className="relative z-10 flex flex-col items-center justify-center p-8">
+                                
+                                {/* Animated Avatar Container */}
+                                <div className="relative mb-12">
+                                    {/* Outer Rings */}
+                                    <div className="absolute inset-0 scale-150">
+                                        <div className="absolute inset-0 rounded-full border border-teal-500/30 animate-pulse-ring"></div>
+                                        <div className="absolute inset-0 rounded-full border border-purple-500/30 animate-pulse-ring animation-delay-500"></div>
+                                    </div>
+                                    
+                                    {/* Spinning Gradient Border */}
+                                    <div className="relative w-48 h-48 md:w-64 md:h-64">
+                                        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-teal-500 via-purple-500 to-pink-500 animate-rotate-slow opacity-75 blur-sm"></div>
+                                        <div className="absolute inset-1 rounded-full bg-slate-900"></div>
+                                        
+                                        {/* User Image */}
+                                        <div className="absolute inset-3 rounded-full overflow-hidden border-2 border-white/20">
+                                            <img 
+                                                src={capturedImage} 
+                                                alt="Analyzing" 
+                                                className="w-full h-full object-cover opacity-60"
+                                            />
+                                            {/* Scan Effect */}
+                                            <div className="absolute inset-0 bg-gradient-to-b from-teal-400/30 via-transparent to-transparent animate-scan-line"></div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Center Icon */}
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-16 h-16 rounded-full bg-slate-900/80 backdrop-blur-xl flex items-center justify-center border border-white/10 shadow-2xl">
+                                            {React.createElement(loadingSteps[loadingStep].icon, {
+                                                className: `w-8 h-8 ${loadingSteps[loadingStep].color} animate-pulse`
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Loading Text */}
+                                <div className="text-center space-y-4">
+                                    <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">
+                                        AI Analysis in Progress
+                                    </h2>
+                                    
+                                    {/* Current Step */}
+                                    <div className="flex items-center justify-center gap-3 min-h-[40px]">
+                                        <Loader2 className={`w-5 h-5 ${loadingSteps[loadingStep].color} animate-spin`} />
+                                        <p className={`text-lg font-medium ${loadingSteps[loadingStep].color}`}>
+                                            {loadingSteps[loadingStep].text}
+                                        </p>
+                                    </div>
+                                    
+                                    {/* Progress Dots */}
+                                    <div className="flex items-center justify-center gap-2 pt-4">
+                                        {loadingSteps.map((step, idx) => (
+                                            <div 
+                                                key={idx}
+                                                className={`w-2 h-2 rounded-full transition-all duration-500 ${
+                                                    idx <= loadingStep 
+                                                        ? 'bg-gradient-to-r from-teal-400 to-purple-400 scale-100' 
+                                                        : 'bg-white/20 scale-75'
+                                                }`}
+                                            ></div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Bottom Info */}
+                                <div className="mt-12 text-center">
+                                    <p className="text-white/40 text-sm">
+                                        Powered by Google Gemini 2.0 Flash
+                                    </p>
                                 </div>
                             </div>
-                            <h2 className="mt-8 text-3xl font-bold text-white animate-pulse">
-                                Analyzing Facial Features...
-                            </h2>
-                            <p className="text-purple-200/60 mt-2 text-lg">
-                                Scanning face shape, jawline, and skin tone
-                            </p>
                         </div>
                     )}
 
@@ -83,10 +174,8 @@ export default function HairModePage() {
                             onReset={handleReset}
                         />
                     )}
-
                 </div>
             )}
-
         </main>
     );
 }

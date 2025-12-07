@@ -1,4 +1,6 @@
-export type FaceShape = 'Oval' | 'Square' | 'Round' | 'Diamond' | 'Heart' | 'Triangle';
+import { analyzeWithGemini, analyzeColorWithGemini, GeminiAnalysisResult, GeminiColorAnalysisResult } from './geminiService';
+
+export type FaceShape = 'Oval' | 'Square' | 'Round' | 'Diamond' | 'Heart' | 'Triangle' | 'Oblong';
 export type Jawline = 'Soft' | 'Sharp' | 'Defined';
 export type SkinTone = 'Warm' | 'Neutral' | 'Cool';
 export type Gender = 'Male' | 'Female';
@@ -18,258 +20,274 @@ export interface Hairstyle {
     name: string;
     gender: Gender;
     imageUrl: string;
-    expertTip: string;
-    suitabilityReason: string;
+    theLook: string;
+    whyItWorks: string;
+    whatToAskFor: string;
+    expertTip?: string;
+    suitabilityReason?: string;
     instructions: string[];
     bestForFaceShapes: FaceShape[];
+    matchScore?: number;
 }
 
 export interface AnalysisResult {
     faceShape: FaceShape;
+    faceShapeDescription: string;
+    stylingRule: string;
     jawline: Jawline;
     skinTone: SkinTone;
+    gender: Gender;
+    hairType?: string;
+    currentHairDescription?: string;
     recommendedStyles: Hairstyle[];
+    keyTips: string[];
 }
 
 export interface ColorAnalysisResult {
     skinTone: SkinTone;
+    undertone?: string;
     season: Season;
+    seasonDescription?: string;
     bestColors: HairColor[];
-    avoidColors: string[];
+    avoidColors: {
+        name: string;
+        reason: string;
+    }[];
+    keyTips?: string[];
 }
 
-const COLOR_DATABASE: HairColor[] = [
-    // WINTER (Cool & Dark)
-    { id: 'c1', name: 'Jet Black', hexCode: '#0a0a0a', season: 'Winter', description: 'Deep, cool black matches high contrast features.', expertTip: 'Use a blue-black toner for extra shine.' },
-    { id: 'c2', name: 'Icy Platinum', hexCode: '#e0e0e0', season: 'Winter', description: 'Striking contrast for cool undertones.', expertTip: 'Requires purple shampoo maintenance.' },
-    { id: 'c3', name: 'Deep Plum', hexCode: '#4a1a2c', season: 'Winter', description: 'Rich purple hues bring out cool skin.', expertTip: 'Great for adding dimension to dark hair.' },
+// Hairstyle image database for matching
+const HAIRSTYLE_IMAGES: Record<string, string> = {
+    'quiff': 'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?q=80&w=300&h=400&fit=crop',
+    'side part': 'https://images.unsplash.com/photo-1517832207067-4db24a2ae47c?q=80&w=300&h=400&fit=crop',
+    'pompadour': 'https://images.unsplash.com/photo-1503951914205-2d60d5b8b990?q=80&w=300&h=400&fit=crop',
+    'fade': 'https://images.unsplash.com/photo-1621605815971-fbc98d665033?q=80&w=300&h=400&fit=crop',
+    'undercut': 'https://images.unsplash.com/photo-1512413348602-c7f46eb293df?q=80&w=300&h=400&fit=crop',
+    'fringe': 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=300&h=400&fit=crop',
+    'faux hawk': 'https://images.unsplash.com/photo-1605497788044-5a32c7078486?q=80&w=300&h=400&fit=crop',
+    'buzz': 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?q=80&w=300&h=400&fit=crop',
+    'crew cut': 'https://images.unsplash.com/photo-1595152772835-219674b2a8a6?q=80&w=300&h=400&fit=crop',
+    'textured': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&h=400&fit=crop',
+    'slick': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=300&h=400&fit=crop',
+    'layered': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&h=400&fit=crop',
+    'bob': 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=300&h=400&fit=crop',
+    'pixie': 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=300&h=400&fit=crop',
+    'waves': 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=300&h=400&fit=crop',
+    'long': 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=300&h=400&fit=crop',
+    'curly': 'https://images.unsplash.com/photo-1503104834685-7205e8607eb9?q=80&w=300&h=400&fit=crop',
+    'default_male': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=300&h=400&fit=crop',
+    'default_female': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=300&h=400&fit=crop',
+};
 
-    // SUMMER (Cool & Light)
-    { id: 'c4', name: 'Ash Blonde', hexCode: '#b2b2b2', season: 'Summer', description: 'Muted cool tones that don’t overpower.', expertTip: 'Ask for a root smudge for a natural grow-out.' },
-    { id: 'c5', name: 'Mushroom Brown', hexCode: '#7b6d61', season: 'Summer', description: 'Earthy, cool neutral brown.', expertTip: 'Perfect transition from blonde to brunette.' },
-    { id: 'c6', name: 'Pastel Pink', hexCode: '#ffd1dc', season: 'Summer', description: 'Soft, airy color for delicate features.', expertTip: 'Fades fast, wash with cold water.' },
-
-    // AUTUMN (Warm & Dark)
-    { id: 'c7', name: 'Rich Chestnut', hexCode: '#5d2906', season: 'Autumn', description: 'Warm, golden brown adds glow.', expertTip: 'Golden highlights frame the face beautifully.' },
-    { id: 'c8', name: 'Copper Red', hexCode: '#b04a00', season: 'Autumn', description: 'Vibrant warmth for warm skin tones.', expertTip: 'Use color-depositing conditioner to keep it bright.' },
-    { id: 'c9', name: 'Caramel Balayage', hexCode: '#c68e17', season: 'Autumn', description: 'Sun-kissed depth without going too light.', expertTip: 'Focus the lightest pieces around the face.' },
-
-    // SPRING (Warm & Light)
-    { id: 'c10', name: 'Golden Honey', hexCode: '#eebb55', season: 'Spring', description: 'Radiant and bright for warm complexions.', expertTip: 'Gloss treatments are key for this shine.' },
-    { id: 'c11', name: 'Strawberry Blonde', hexCode: '#ffcea0', season: 'Spring', description: 'A playful mix of red and gold.', expertTip: 'Looks amazing with freckles.' },
-    { id: 'c12', name: 'Warm Beige', hexCode: '#dcc0a0', season: 'Spring', description: 'Creamy neutral that leans warm.', expertTip: 'A timeless, sophisticated shade.' },
-];
-
-const HAIRSTYLE_DATABASE: Hairstyle[] = [
-    // MALE HAIRSTYLES
-    {
-        id: 'm1',
-        name: "The Texture Quiff",
-        gender: "Male",
-        imageUrl: "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?q=80&w=300&h=400&fit=crop",
-        expertTip: "Jawed Habib Tip: Use point cutting on the top to create movement without thinning out the volume too much.",
-        suitabilityReason: "The height of the quiff elongates the face, balancing wide cheekbones or a strong jaw.",
-        instructions: [
-            "Fade the sides triggered from #1 to #2.",
-            "Leave 3-4 inches on top.",
-            "Point cut for texture.",
-            "Blow dry upwards with a round brush."
-        ],
-        bestForFaceShapes: ['Square', 'Round', 'Oval']
-    },
-    {
-        id: 'm2',
-        name: "Modern Pompadour",
-        gender: "Male",
-        imageUrl: "https://images.unsplash.com/photo-1503951914205-2d60d5b8b990?q=80&w=300&h=400&fit=crop",
-        expertTip: "Alim Hakim Tip: Keep the edges sharp but the transition soft to maintain a gentleman’s look.",
-        suitabilityReason: "Adds volume on top which suits rounder faces by adding verticality.",
-        instructions: [
-            "Scissor over comb for the sides.",
-            "Maintain length at the fringe.",
-            "Use matte clay for hold.",
-            "Comb back with volume."
-        ],
-        bestForFaceShapes: ['Round', 'Triangle', 'Oval']
-    },
-    {
-        id: 'm3',
-        name: "Textured Crop",
-        gender: "Male",
-        imageUrl: "https://images.unsplash.com/photo-1621605815971-fbc98d665033?q=80&w=300&h=400&fit=crop",
-        expertTip: "StyleVision Pro Tip: Works best with sea salt spray to enhance natural wave.",
-        suitabilityReason: "The fringe breaks up a longer forehead or diamond face shape.",
-        instructions: [
-            "High skin fade.",
-            "Blunt cut fringe.",
-            "Deep point cutting on crown.",
-            "Style with texture powder."
-        ],
-        bestForFaceShapes: ['Diamond', 'Oval', 'Heart']
-    },
-    {
-        id: 'm4',
-        name: "Classic Side Part",
-        gender: "Male",
-        imageUrl: "https://images.unsplash.com/photo-1517832207067-4db24a2ae47c?q=80&w=300&h=400&fit=crop",
-        expertTip: "Jawed Habib Tip: Define the parting line with a razor for a crisp, timeless finish.",
-        suitabilityReason: "An asymmetrical style that softens square jawlines.",
-        instructions: [
-            "Taper the neck and ears.",
-            "Leave weight on the parietal ridge.",
-            "Razor the part line.",
-            "Finish with high-shine pomade."
-        ],
-        bestForFaceShapes: ['Square', 'Oval']
-    },
-    {
-        id: 'm5',
-        name: "Surfer Waves",
-        gender: "Male",
-        imageUrl: "https://images.unsplash.com/photo-1521119989659-a83eee488058?q=80&w=300&h=400&fit=crop",
-        expertTip: "Alim Hakim Tip: Don't over-wash. Natural oils help this style sit better.",
-        suitabilityReason: "Softens angular features of diamond or rectangle faces.",
-        instructions: [
-            "Long layers throughout.",
-            "Feather the ends.",
-            "Use leave-in conditioner.",
-            "Air dry for natural texture."
-        ],
-        bestForFaceShapes: ['Diamond', 'Square']
-    },
-
-    // FEMALE HAIRSTYLES
-    {
-        id: 'f1',
-        name: "Long Layers with Curtain Bangs",
-        gender: "Female",
-        imageUrl: "https://images.unsplash.com/photo-1519699047748-40baea614fda?q=80&w=300&h=400&fit=crop",
-        expertTip: "Jawed Habib Tip: Cut the bangs starting from the nose bridge to frame the eyes perfectly.",
-        suitabilityReason: "Curtain bangs slim down a round face and emphasize cheekbones on an oval face.",
-        instructions: [
-            "Face-framing layers.",
-            "Soft curtain bangs blended into sides.",
-            "Point cut ends for softness.",
-            "Blowout with large round brush."
-        ],
-        bestForFaceShapes: ['Round', 'Oval', 'Square']
-    },
-    {
-        id: 'f2',
-        name: "Textured Bob",
-        gender: "Female",
-        imageUrl: "https://images.unsplash.com/photo-1595152772835-219674b2a8a6?q=80&w=300&h=400&fit=crop",
-        expertTip: "Alim Hakim Tip: Keep the nape slightly shorter for a modern profile silhouette.",
-        suitabilityReason: "Adds width to the jawline, balancing a heart-shaped or diamond face.",
-        instructions: [
-            "Chin-length bob.",
-            "Internal layering for volume.",
-            "Slight graduation at nape.",
-            "Messy wave finish."
-        ],
-        bestForFaceShapes: ['Diamond', 'Heart', 'Oval']
-    },
-    {
-        id: 'f3',
-        name: "Sleek High Pony",
-        gender: "Female",
-        imageUrl: "https://images.unsplash.com/photo-1619420656799-73e4b78971f1?q=80&w=300&h=400&fit=crop",
-        expertTip: "StyleVision Pro Tip: Wrap a strand of hair around the elastic for a runway-ready look.",
-        suitabilityReason: "Draws the eyes up, lifting the face. Great for balancing round faces.",
-        instructions: [
-            "Straighten hair bone-straight.",
-            "Gather at the crown.",
-            "Smooth flyaways with gel.",
-            "Secure tightly."
-        ],
-        bestForFaceShapes: ['Round', 'Square']
-    },
-    {
-        id: 'f4',
-        name: "Pixie Cut",
-        gender: "Female",
-        imageUrl: "https://images.unsplash.com/photo-1627447990176-58be780cf2a4?q=80&w=300&h=400&fit=crop",
-        expertTip: "Jawed Habib Tip: Keep the sideburns soft to prevent it from looking too masculine.",
-        suitabilityReason: "Highlights delicate features. Perfect for oval and heart shapes.",
-        instructions: [
-            "Tight sides and back.",
-            "Choppy layers on top.",
-            "Soft fringe.",
-            "Use wax for definition."
-        ],
-        bestForFaceShapes: ['Oval', 'Heart']
-    },
-    {
-        id: 'f5',
-        name: "Hollywood Waves",
-        gender: "Female",
-        imageUrl: "https://images.unsplash.com/photo-1580618672591-eb180b1a97e4?q=80&w=300&h=400&fit=crop",
-        expertTip: "Alim Hakim Tip: Pin the curls while they cool to set the shape for longer duration.",
-        suitabilityReason: "Softens sharp jawlines of square faces with flowing curves.",
-        instructions: [
-            "Deep side part.",
-            "Use 1.5 inch curling iron.",
-            "Brush out curls into glossy waves.",
-            "Set with strong hold spray."
-        ],
-        bestForFaceShapes: ['Square', 'Diamond']
+// Find appropriate image for hairstyle
+function findHairstyleImage(styleName: string, gender: string): string {
+    const lowerName = styleName.toLowerCase();
+    
+    for (const [key, url] of Object.entries(HAIRSTYLE_IMAGES)) {
+        if (lowerName.includes(key)) {
+            return url;
+        }
     }
-];
+    
+    // Return gender-appropriate default
+    return gender.toLowerCase() === 'female' ? HAIRSTYLE_IMAGES['default_female'] : HAIRSTYLE_IMAGES['default_male'];
+}
 
+// Main face analysis function - uses Gemini API
 export const analyzeFace = async (imageSrc: string): Promise<AnalysisResult> => {
-    return new Promise((resolve) => {
-        // Simulate AI Processing Delay
-        setTimeout(() => {
-            // Mock Data Generation
-            const shapes: FaceShape[] = ['Oval', 'Square', 'Round', 'Diamond', 'Heart', 'Triangle'];
-            const jawlines: Jawline[] = ['Soft', 'Sharp', 'Defined'];
-            const skinTones: SkinTone[] = ['Warm', 'Neutral', 'Cool'];
+    try {
+        // Call Gemini API for analysis
+        const geminiResult: GeminiAnalysisResult = await analyzeWithGemini(imageSrc);
+        
+        // Convert Gemini result to our format
+        const recommendedStyles: Hairstyle[] = geminiResult.recommendations.map((rec, index) => ({
+            id: rec.id || `style-${index}`,
+            name: rec.name,
+            gender: geminiResult.gender,
+            imageUrl: findHairstyleImage(rec.name, geminiResult.gender),
+            theLook: rec.theLook,
+            whyItWorks: rec.whyItWorks,
+            whatToAskFor: rec.whatToAskFor,
+            expertTip: rec.expertTip,
+            instructions: rec.instructions || [],
+            bestForFaceShapes: [geminiResult.faceShape as FaceShape],
+            matchScore: rec.matchScore
+        }));
 
-            const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+        // Sort by match score
+        recommendedStyles.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
 
-            const recommendations = HAIRSTYLE_DATABASE.filter(
-                style => style.bestForFaceShapes.includes(randomShape)
-            );
-
-            resolve({
-                faceShape: randomShape,
-                jawline: jawlines[Math.floor(Math.random() * jawlines.length)],
-                skinTone: skinTones[Math.floor(Math.random() * skinTones.length)],
-                recommendedStyles: recommendations
-            });
-        }, 3000);
-    });
+        return {
+            faceShape: geminiResult.faceShape as FaceShape,
+            faceShapeDescription: geminiResult.faceShapeDescription,
+            stylingRule: geminiResult.stylingRule,
+            jawline: 'Defined', // Default, can be enhanced
+            skinTone: geminiResult.skinTone as SkinTone,
+            gender: geminiResult.gender,
+            hairType: geminiResult.hairType,
+            currentHairDescription: geminiResult.currentHairDescription,
+            recommendedStyles,
+            keyTips: geminiResult.keyTips || []
+        };
+        
+    } catch (error) {
+        console.error('Analysis failed, using fallback:', error);
+        return getFallbackAnalysisResult();
+    }
 };
 
+// Color analysis function - uses Gemini API
 export const analyzeColor = async (imageSrc: string): Promise<ColorAnalysisResult> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const skinTones: SkinTone[] = ['Warm', 'Cool', 'Neutral'];
-            const seasons: Record<string, Season[]> = {
-                'Warm': ['Spring', 'Autumn'],
-                'Cool': ['Summer', 'Winter'],
-                'Neutral': ['Autumn', 'Summer'] // Simplified for mock
-            };
+    try {
+        // Call Gemini API for color analysis
+        const geminiResult: GeminiColorAnalysisResult = await analyzeColorWithGemini(imageSrc);
+        
+        // Convert Gemini result to our format
+        const bestColors: HairColor[] = geminiResult.recommendedColors.map((color, index) => ({
+            id: `color-${index}`,
+            name: color.name,
+            hexCode: color.hexCode,
+            season: geminiResult.season as Season,
+            description: color.description,
+            expertTip: color.expertTip
+        }));
 
-            const selectedSkinTone = skinTones[Math.floor(Math.random() * skinTones.length)];
-            const possibleSeasons = seasons[selectedSkinTone];
-            const selectedSeason = possibleSeasons[Math.floor(Math.random() * possibleSeasons.length)];
-
-            const recommendations = COLOR_DATABASE.filter(c => c.season === selectedSeason);
-
-            const avoidMap: Record<Season, string[]> = {
-                'Winter': ['Golden Blonde', 'Warm Copper', 'Orange Reds'],
-                'Summer': ['Jet Black', 'Brass Gold', 'Yellow Undertones'],
-                'Autumn': ['Platinum', 'Ash colors', 'Blue-Black'],
-                'Spring': ['Dark Ash', 'Black', 'Cool Silvers']
-            };
-
-            resolve({
-                skinTone: selectedSkinTone,
-                season: selectedSeason,
-                bestColors: recommendations,
-                avoidColors: avoidMap[selectedSeason]
-            });
-        }, 3000);
-    });
+        return {
+            skinTone: geminiResult.skinTone as SkinTone,
+            undertone: geminiResult.undertone,
+            season: geminiResult.season as Season,
+            seasonDescription: geminiResult.seasonDescription,
+            bestColors,
+            avoidColors: geminiResult.colorsToAvoid,
+            keyTips: geminiResult.keyTips
+        };
+        
+    } catch (error) {
+        console.error('Color analysis failed, using fallback:', error);
+        return getFallbackColorAnalysisResult();
+    }
 };
+
+// Fallback analysis results
+function getFallbackAnalysisResult(): AnalysisResult {
+    return {
+        faceShape: 'Oval',
+        faceShapeDescription: 'Your face has well-balanced proportions with a gently rounded hairline and chin. This versatile shape works well with many different hairstyles.',
+        stylingRule: 'Oval faces are considered the most versatile face shape. You can experiment with various styles - focus on enhancing your best features rather than correcting proportions.',
+        jawline: 'Defined',
+        skinTone: 'Neutral',
+        gender: 'Male',
+        recommendedStyles: [
+            {
+                id: 'fb-1',
+                name: 'The Modern Quiff',
+                gender: 'Male',
+                imageUrl: HAIRSTYLE_IMAGES['quiff'],
+                theLook: 'Voluminous top swept upward and back with clean tapered sides',
+                whyItWorks: 'Adds height and sophistication while complementing your balanced facial proportions',
+                whatToAskFor: 'Tapered sides with 2-3 inches on top for volume. Ask for texture on top.',
+                expertTip: 'Use a sea salt spray before blow drying for natural texture and hold',
+                instructions: ['Apply mousse to damp hair', 'Blow dry upward with round brush', 'Finish with matte paste for texture'],
+                bestForFaceShapes: ['Oval', 'Round'],
+                matchScore: 92
+            },
+            {
+                id: 'fb-2',
+                name: 'Textured Side Part',
+                gender: 'Male',
+                imageUrl: HAIRSTYLE_IMAGES['side part'],
+                theLook: 'Classic side-parted style with modern textured finish',
+                whyItWorks: 'Timeless and professional, works for any occasion',
+                whatToAskFor: 'Medium length on top, tapered sides, find your natural part line',
+                expertTip: 'Find your natural part by pushing hair forward and seeing where it falls',
+                instructions: ['Apply light pomade to damp hair', 'Comb into place', 'Add texture with fingers'],
+                bestForFaceShapes: ['Oval', 'Square'],
+                matchScore: 88
+            },
+            {
+                id: 'fb-3',
+                name: 'Textured Crop',
+                gender: 'Male',
+                imageUrl: HAIRSTYLE_IMAGES['textured'],
+                theLook: 'Short, choppy layers with natural movement and texture',
+                whyItWorks: 'Low maintenance yet stylish, enhances natural hair texture',
+                whatToAskFor: 'Textured crop with point cutting technique, short sides',
+                expertTip: 'Less product is more - just a small amount of matte clay',
+                instructions: ['Towel dry to 80%', 'Apply small amount of clay', 'Style with fingers for natural look'],
+                bestForFaceShapes: ['Oval', 'Diamond'],
+                matchScore: 85
+            },
+            {
+                id: 'fb-4',
+                name: 'High Fade with Texture',
+                gender: 'Male',
+                imageUrl: HAIRSTYLE_IMAGES['fade'],
+                theLook: 'Clean high fade with textured, styled top',
+                whyItWorks: 'Sharp and modern, creates clean lines that enhance your features',
+                whatToAskFor: 'High skin fade, textured top with 2 inches length',
+                expertTip: 'Keep the fade fresh every 2-3 weeks for best results',
+                instructions: ['Use matte wax', 'Work through dry hair', 'Style upward and to the side'],
+                bestForFaceShapes: ['Oval', 'Round'],
+                matchScore: 82
+            },
+            {
+                id: 'fb-5',
+                name: 'Classic Pompadour',
+                gender: 'Male',
+                imageUrl: HAIRSTYLE_IMAGES['pompadour'],
+                theLook: 'Volume swept back with classic pompadour shape',
+                whyItWorks: 'Adds impressive height while maintaining a refined appearance',
+                whatToAskFor: 'Leave 4-5 inches on top, taper the sides, no hard lines',
+                expertTip: 'Build volume at the roots first before styling back',
+                instructions: ['Blow dry roots upward', 'Apply pomade throughout', 'Comb back and up for volume'],
+                bestForFaceShapes: ['Oval', 'Square'],
+                matchScore: 78
+            },
+            {
+                id: 'fb-6',
+                name: 'Messy Fringe',
+                gender: 'Male',
+                imageUrl: HAIRSTYLE_IMAGES['fringe'],
+                theLook: 'Relaxed, effortless style with textured bangs falling forward',
+                whyItWorks: 'Creates a youthful, approachable appearance',
+                whatToAskFor: 'Longer textured fringe, shorter back and sides',
+                expertTip: 'Work product through with fingers only - no combs',
+                instructions: ['Air dry or rough dry', 'Apply texture spray or paste', 'Tousle with fingers'],
+                bestForFaceShapes: ['Oval', 'Heart'],
+                matchScore: 75
+            }
+        ],
+        keyTips: [
+            'With your oval face shape, you have the most versatility - experiment with different styles!',
+            'Consider your lifestyle when choosing - busy schedules benefit from lower maintenance cuts',
+            'Bring reference photos to your stylist for clearer communication'
+        ]
+    };
+}
+
+function getFallbackColorAnalysisResult(): ColorAnalysisResult {
+    return {
+        skinTone: 'Neutral',
+        undertone: 'Balanced with subtle warm undertones',
+        season: 'Autumn',
+        seasonDescription: 'Your coloring suggests a warm Autumn palette. You have depth and richness to your features that pairs beautifully with earthy, warm tones.',
+        bestColors: [
+            { id: 'c1', name: 'Rich Chestnut', hexCode: '#5D2906', season: 'Autumn', description: 'Warm brown with golden undertones that adds natural glow', expertTip: 'Add golden highlights for dimension' },
+            { id: 'c2', name: 'Copper Red', hexCode: '#B04A00', season: 'Autumn', description: 'Vibrant warm copper that complements warm skin tones', expertTip: 'Use color-depositing conditioner weekly' },
+            { id: 'c3', name: 'Caramel Balayage', hexCode: '#C68E17', season: 'Autumn', description: 'Sun-kissed warmth without going too light', expertTip: 'Focus lighter pieces around the face' },
+            { id: 'c4', name: 'Warm Chocolate', hexCode: '#3C1414', season: 'Autumn', description: 'Deep brown with subtle red undertones', expertTip: 'Glossing treatments enhance shine' },
+            { id: 'c5', name: 'Golden Honey', hexCode: '#E8B960', season: 'Autumn', description: 'Radiant warm blonde for brightening', expertTip: 'Requires regular toning' },
+            { id: 'c6', name: 'Auburn', hexCode: '#8B2500', season: 'Autumn', description: 'Classic red-brown blend', expertTip: 'Most versatile shade for autumn colorings' }
+        ],
+        avoidColors: [
+            { name: 'Platinum Blonde', reason: 'Too cool and stark, can wash out warm skin tones' },
+            { name: 'Jet Black', reason: 'Creates harsh contrast that can make skin look dull' },
+            { name: 'Ash Brown', reason: 'Cool undertones clash with warm complexion' }
+        ],
+        keyTips: [
+            'Warm tones will enhance your natural glow and make your skin look vibrant',
+            'Avoid ashy or cool-toned colors that can make skin look sallow or washed out',
+            'Rich, deep colors create beautiful contrast with your warm features'
+        ]
+    };
+}
