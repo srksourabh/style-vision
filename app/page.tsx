@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { Camera, Upload, Sparkles, Loader2, ChevronDown, ChevronUp, Star, Clock, Scissors } from 'lucide-react';
+import { Camera, Upload, Sparkles, Loader2, ChevronDown, ChevronUp, Star, Clock, Scissors, Palette, Zap, Shield } from 'lucide-react';
 import { analyzeWithGemini, analyzeColorWithGemini, AnalysisResult, ColorAnalysisResult } from '@/utils/geminiService';
 
 type AnalysisMode = 'hairstyle' | 'color';
@@ -14,6 +14,7 @@ export default function Home() {
   const [activeMode, setActiveMode] = useState<AnalysisMode>('hairstyle');
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showApp, setShowApp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,21 +84,147 @@ export default function Home() {
     }
   };
 
+  // Landing Page / Hero Section
+  if (!showApp) {
+    return (
+      <main className="min-h-screen">
+        {/* Hero Section */}
+        <div className="relative overflow-hidden">
+          {/* Background gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-100 via-pink-50 to-white"></div>
+          <div className="absolute top-0 right-0 w-96 h-96 bg-purple-200 rounded-full filter blur-3xl opacity-30 -translate-y-1/2 translate-x-1/2"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-pink-200 rounded-full filter blur-3xl opacity-30 translate-y-1/2 -translate-x-1/2"></div>
+          
+          <div className="relative max-w-6xl mx-auto px-4 py-20">
+            {/* Logo & Title */}
+            <div className="text-center mb-12">
+              <div className="flex items-center justify-center gap-4 mb-6">
+                <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-600 rounded-3xl shadow-2xl shadow-purple-500/25">
+                  <Scissors className="w-12 h-12 text-white" />
+                </div>
+              </div>
+              <h1 className="text-5xl md:text-6xl font-bold mb-6">
+                <span className="bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
+                  StyleVision AI
+                </span>
+              </h1>
+              <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+                Discover your perfect hairstyle with AI-powered face analysis.
+                Upload a photo and get personalized recommendations in seconds.
+              </p>
+            </div>
+
+            {/* CTA Button */}
+            <div className="text-center mb-16">
+              <button
+                onClick={() => setShowApp(true)}
+                className="group px-10 py-5 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xl font-semibold rounded-2xl shadow-2xl shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 transition-all duration-300 flex items-center gap-3 mx-auto"
+              >
+                <Camera className="w-6 h-6" />
+                Get Started - It's Free
+                <Sparkles className="w-6 h-6 group-hover:rotate-12 transition-transform" />
+              </button>
+              <p className="mt-4 text-gray-500 text-sm">No signup required • Instant results</p>
+            </div>
+
+            {/* Features Grid */}
+            <div className="grid md:grid-cols-3 gap-8 mb-16">
+              <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                <div className="w-14 h-14 bg-purple-100 rounded-xl flex items-center justify-center mb-5">
+                  <Scissors className="w-7 h-7 text-purple-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-3">Hairstyle Analysis</h3>
+                <p className="text-gray-600">
+                  AI analyzes your face shape, features, and current hair to recommend 6 perfect hairstyles tailored just for you.
+                </p>
+              </div>
+
+              <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                <div className="w-14 h-14 bg-pink-100 rounded-xl flex items-center justify-center mb-5">
+                  <Palette className="w-7 h-7 text-pink-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-3">Color Matching</h3>
+                <p className="text-gray-600">
+                  Discover your color season and get personalized hair color recommendations that complement your skin tone.
+                </p>
+              </div>
+
+              <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                <div className="w-14 h-14 bg-purple-100 rounded-xl flex items-center justify-center mb-5">
+                  <Zap className="w-7 h-7 text-purple-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-3">Instant Results</h3>
+                <p className="text-gray-600">
+                  Powered by Gemini 2.0 Flash AI for lightning-fast analysis. Get detailed recommendations in under 10 seconds.
+                </p>
+              </div>
+            </div>
+
+            {/* How It Works */}
+            <div className="bg-white/50 backdrop-blur-sm rounded-3xl p-10 shadow-lg">
+              <h2 className="text-3xl font-bold text-center text-gray-800 mb-10">How It Works</h2>
+              <div className="grid md:grid-cols-3 gap-8">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold shadow-lg">
+                    1
+                  </div>
+                  <h3 className="font-semibold text-lg text-gray-800 mb-2">Upload Photo</h3>
+                  <p className="text-gray-600">Take a selfie or upload an existing photo. Clear, front-facing works best.</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-pink-500 to-pink-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold shadow-lg">
+                    2
+                  </div>
+                  <h3 className="font-semibold text-lg text-gray-800 mb-2">AI Analysis</h3>
+                  <p className="text-gray-600">Our AI examines your face shape, features, skin tone, and current hair.</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 text-white text-2xl font-bold shadow-lg">
+                    3
+                  </div>
+                  <h3 className="font-semibold text-lg text-gray-800 mb-2">Get Recommendations</h3>
+                  <p className="text-gray-600">Receive 6 personalized hairstyle or color recommendations with styling tips.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Trust Badge */}
+            <div className="flex items-center justify-center gap-6 mt-12 text-gray-500">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5" />
+                <span className="text-sm">Photos never stored</span>
+              </div>
+              <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5" />
+                <span className="text-sm">Powered by Google Gemini AI</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Main App Interface
   return (
     <main className="min-h-screen py-8 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="p-3 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl shadow-lg">
+          <button 
+            onClick={() => setShowApp(false)}
+            className="flex items-center justify-center gap-3 mb-4 mx-auto hover:opacity-80 transition-opacity"
+          >
+            <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl shadow-lg">
               <Scissors className="w-8 h-8 text-white" />
             </div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
               StyleVision AI
             </h1>
-          </div>
+          </button>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            Upload your photo and discover personalized hairstyle and color recommendations powered by advanced AI analysis
+            Upload your photo and discover personalized hairstyle and color recommendations
           </p>
         </div>
 
@@ -108,7 +235,7 @@ export default function Home() {
               onClick={() => setActiveMode('hairstyle')}
               className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
                 activeMode === 'hairstyle'
-                  ? 'bg-white text-primary-700 shadow-md'
+                  ? 'bg-white text-purple-700 shadow-md'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
@@ -121,12 +248,12 @@ export default function Home() {
               onClick={() => setActiveMode('color')}
               className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
                 activeMode === 'color'
-                  ? 'bg-white text-primary-700 shadow-md'
+                  ? 'bg-white text-purple-700 shadow-md'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               <span className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
+                <Palette className="w-4 h-4" />
                 Color Analysis
               </span>
             </button>
@@ -138,14 +265,15 @@ export default function Home() {
           <div className="max-w-xl mx-auto">
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-3 border-dashed border-primary-300 rounded-3xl p-12 text-center cursor-pointer hover:border-primary-500 hover:bg-primary-50/50 transition-all group"
+              className="border-2 border-dashed border-purple-300 rounded-3xl p-12 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 transition-all group"
             >
-              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-primary-100 to-primary-200 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Camera className="w-10 h-10 text-primary-600" />
+              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Camera className="w-10 h-10 text-purple-600" />
               </div>
               <h3 className="text-xl font-semibold text-gray-800 mb-2">Upload Your Photo</h3>
-              <p className="text-gray-500 mb-4">Drag and drop or click to select</p>
+              <p className="text-gray-500 mb-4">Click to select or drag and drop</p>
               <p className="text-sm text-gray-400">Supports JPG, PNG up to 10MB</p>
+              <p className="text-xs text-purple-500 mt-4">💡 Tip: Use a clear, front-facing photo for best results</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -179,7 +307,7 @@ export default function Home() {
                 <button
                   onClick={handleAnalyze}
                   disabled={isAnalyzing}
-                  className="flex-1 py-3 px-6 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl font-semibold hover:from-primary-700 hover:to-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                  className="flex-1 py-3 px-6 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
                 >
                   {isAnalyzing ? (
                     <>
@@ -212,30 +340,30 @@ export default function Home() {
               {analysisResult && (
                 <div className="bg-white rounded-2xl p-6 shadow-lg">
                   <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center gap-2">
-                    <Star className="w-5 h-5 text-primary-600" />
+                    <Star className="w-5 h-5 text-purple-600" />
                     Your Analysis Summary
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-primary-50 rounded-xl p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                       <p className="text-sm text-gray-500 mb-1">Face Shape</p>
-                      <p className="font-semibold text-primary-800">{analysisResult.faceShape}</p>
+                      <p className="font-semibold text-purple-800">{analysisResult.faceShape}</p>
                     </div>
-                    <div className="bg-primary-50 rounded-xl p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                       <p className="text-sm text-gray-500 mb-1">Hair Type</p>
-                      <p className="font-semibold text-primary-800">{analysisResult.hairType}</p>
+                      <p className="font-semibold text-purple-800">{analysisResult.hairType}</p>
                     </div>
-                    <div className="bg-primary-50 rounded-xl p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                       <p className="text-sm text-gray-500 mb-1">Hair Texture</p>
-                      <p className="font-semibold text-primary-800">{analysisResult.hairTexture}</p>
+                      <p className="font-semibold text-purple-800">{analysisResult.hairTexture}</p>
                     </div>
-                    <div className="bg-primary-50 rounded-xl p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                       <p className="text-sm text-gray-500 mb-1">Confidence</p>
-                      <p className="font-semibold text-primary-800">{Math.round(analysisResult.confidenceScore * 100)}%</p>
+                      <p className="font-semibold text-purple-800">{Math.round(analysisResult.confidenceScore * 100)}%</p>
                     </div>
                   </div>
                   {analysisResult.expertTip && (
-                    <div className="mt-4 p-4 bg-gradient-to-r from-primary-50 to-purple-50 rounded-xl border border-primary-100">
-                      <p className="text-sm font-medium text-primary-800">💡 Expert Tip</p>
+                    <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-100">
+                      <p className="text-sm font-medium text-purple-800">💡 Expert Tip</p>
                       <p className="text-gray-700 mt-1">{analysisResult.expertTip}</p>
                     </div>
                   )}
@@ -246,26 +374,26 @@ export default function Home() {
               {colorResult && (
                 <div className="bg-white rounded-2xl p-6 shadow-lg">
                   <h3 className="font-semibold text-lg text-gray-800 mb-4 flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-primary-600" />
+                    <Sparkles className="w-5 h-5 text-purple-600" />
                     Your Color Profile
                   </h3>
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-primary-50 rounded-xl p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                       <p className="text-sm text-gray-500 mb-1">Skin Tone</p>
-                      <p className="font-semibold text-primary-800">{colorResult.skinTone}</p>
+                      <p className="font-semibold text-purple-800">{colorResult.skinTone}</p>
                     </div>
-                    <div className="bg-primary-50 rounded-xl p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                       <p className="text-sm text-gray-500 mb-1">Undertone</p>
-                      <p className="font-semibold text-primary-800 capitalize">{colorResult.undertone}</p>
+                      <p className="font-semibold text-purple-800 capitalize">{colorResult.undertone}</p>
                     </div>
-                    <div className="bg-primary-50 rounded-xl p-4">
+                    <div className="bg-purple-50 rounded-xl p-4">
                       <p className="text-sm text-gray-500 mb-1">Season</p>
-                      <p className="font-semibold text-primary-800">{colorResult.season}</p>
+                      <p className="font-semibold text-purple-800">{colorResult.season}</p>
                     </div>
                   </div>
                   {colorResult.expertTip && (
-                    <div className="mt-4 p-4 bg-gradient-to-r from-primary-50 to-purple-50 rounded-xl border border-primary-100">
-                      <p className="text-sm font-medium text-primary-800">💡 Expert Tip</p>
+                    <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-100">
+                      <p className="text-sm font-medium text-purple-800">💡 Expert Tip</p>
                       <p className="text-gray-700 mt-1">{colorResult.expertTip}</p>
                     </div>
                   )}
@@ -292,7 +420,7 @@ export default function Home() {
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              <span className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                              <span className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
                                 {index + 1}
                               </span>
                               <h3 className="text-lg font-semibold text-gray-800">{rec.name}</h3>
@@ -326,7 +454,7 @@ export default function Home() {
                             <ul className="space-y-1">
                               {rec.stylingTips.map((tip, i) => (
                                 <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                                  <span className="text-primary-500 mt-1">•</span>
+                                  <span className="text-purple-500 mt-1">•</span>
                                   {tip}
                                 </li>
                               ))}
@@ -436,7 +564,7 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="mt-16 text-center text-gray-400 text-sm">
-          <p>StyleVision AI • Powered by Gemini AI</p>
+          <p>StyleVision AI • Powered by Gemini 2.0 Flash AI</p>
         </footer>
       </div>
     </main>
