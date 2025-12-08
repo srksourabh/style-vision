@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, ChevronUp, RotateCw, X } from 'lucide-react';
-import { analyzeHairStyle, analyzeHairColor, HairstyleRecommendation, ColorRecommendation } from '@/utils/geminiService';
+import { analyzeWithGemini, analyzeColorWithGemini, HairstyleRecommendation, ColorRecommendation, AnalysisResult, ColorAnalysisResult } from '@/utils/geminiService';
 
 // Logo colors from the actual StyleVision logo
 const logoColors = {
@@ -239,10 +239,10 @@ export default function StyleVision() {
     
     try {
       if (analysisMode === 'hair') {
-        const result = await analyzeHairStyle(capturedPhoto);
+        const result = await analyzeWithGemini(capturedPhoto);
         setHairResults(result.recommendations);
       } else if (analysisMode === 'color') {
-        const result = await analyzeHairColor(capturedPhoto);
+        const result = await analyzeColorWithGemini(capturedPhoto);
         setColorResults(result.recommendations);
       }
     } catch (err) {
