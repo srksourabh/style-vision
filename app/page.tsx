@@ -757,7 +757,7 @@ export default function Home() {
                   <div key={idx} className="bg-white rounded-xl border-2 border-gray-200 p-6 hover:border-purple-300 transition-all">
                     <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="text-xl font-bold text-gray-900">{rec.styleName}</h3>
+                        <h3 className="text-xl font-bold text-gray-900">{rec.style}</h3>
                         <p className="text-sm text-gray-500">{rec.description}</p>
                       </div>
                       <div className={`px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.score)}`}>
