@@ -1,146 +1,166 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, Upload, Sparkles, Loader2, ChevronDown, ChevronUp, Star, Scissors, Palette, SwitchCamera, X, ArrowRight, CheckCircle, Zap } from 'lucide-react';
-import { analyzeWithGemini, analyzeColorWithGemini, AnalysisResult, ColorAnalysisResult } from '@/utils/geminiService';
-import Image from 'next/image';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, ChevronUp, RotateCw, X } from 'lucide-react';
+import { analyzeHairStyle, analyzeHairColor, HairstyleRecommendation, ColorRecommendation } from '@/utils/geminiService';
 
-type AnalysisMode = 'hairstyle' | 'color' | 'bridal';
-type CaptureMode = 'upload' | 'camera';
+// Logo colors from the actual StyleVision logo
+const logoColors = {
+  purple: '#a855f7',    // Hair gradient color
+  purpleDark: '#7c3aed',
+  teal: '#14b8a6',      // Accent elements
+  tealLight: '#2dd4bf',
+  navy: '#1e1b4b',      // Logo circle background
+  white: '#ffffff',
+  gray: {
+    50: '#f9fafb',
+    100: '#f3f4f6',
+    200: '#e5e7eb',
+    300: '#d1d5db',
+    700: '#374151',
+    800: '#1f2937',
+    900: '#111827'
+  }
+};
 
-export default function Home() {
-  const [image, setImage] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [colorResult, setColorResult] = useState<ColorAnalysisResult | null>(null);
-  const [activeMode, setActiveMode] = useState<AnalysisMode>('hairstyle');
-  const [expandedCard, setExpandedCard] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showApp, setShowApp] = useState(false);
-  const [captureMode, setCaptureMode] = useState<CaptureMode>('camera');
-  const [isCameraActive, setIsCameraActive] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
-  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [faceDetected, setFaceDetected] = useState(false);
+// Mock hairstyle images - in production, these would come from AI or database
+const getHairstyleImages = (styleName: string) => {
+  // This will be replaced with actual images matching the style
+  const baseImages = [
+    '/sample-styles/style-front.jpg',
+    '/sample-styles/style-side.jpg',
+    '/sample-styles/style-back.jpg',
+    '/sample-styles/style-angle1.jpg',
+    '/sample-styles/style-angle2.jpg',
+    '/sample-styles/style-detail.jpg',
+  ];
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  return baseImages;
+};
+
+export default function StyleVision() {
+  const [currentView, setCurrentView] = useState<'landing' | 'camera'>('landing');
+  const [analysisMode, setAnalysisMode] = useState<'hair' | 'color' | 'bridal' | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [hairResults, setHairResults] = useState<HairstyleRecommendation[] | null>(null);
+  const [colorResults, setColorResults] = useState<ColorRecommendation[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [expandedCard, setExpandedCard] = useState<number | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  
+  // Image viewer state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerImages, setViewerImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [selectedStyle, setSelectedStyle] = useState<string>('');
+
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Logo colors from the uploaded image
-  const logoColors = {
-    purple: '#a855f7',
-    purpleDark: '#7c3aed',
-    teal: '#14b8a6',
-    tealLight: '#2dd4bf',
-    navy: '#1e1b4b',
-  };
-
-  useEffect(() => {
-    const checkCameras = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        setHasMultipleCameras(videoDevices.length > 1);
-      } catch (err) {
-        console.log('Could not enumerate devices:', err);
-      }
-    };
-    checkCameras();
-  }, []);
-
-  useEffect(() => {
-    return () => { stopCamera(); };
-  }, []);
-
-  const detectFace = useCallback(() => {
+  // Face detection using skin tone analysis
+  const detectFace = (): boolean => {
     if (!videoRef.current || !canvasRef.current) return false;
     
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return false;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || video.videoWidth === 0) return false;
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    
-    let skinPixels = 0;
-    const totalPixels = canvas.width * canvas.height;
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const checkRadius = Math.min(canvas.width, canvas.height) * 0.25;
+    ctx.drawImage(video, 0, 0);
 
-    for (let y = Math.max(0, centerY - checkRadius); y < Math.min(canvas.height, centerY + checkRadius); y++) {
-      for (let x = Math.max(0, centerX - checkRadius); x < Math.min(canvas.width, centerX + checkRadius); x++) {
-        const i = (y * canvas.width + x) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        
-        if (r > 95 && g > 40 && b > 20 &&
-            r > g && r > b &&
-            Math.abs(r - g) > 15) {
-          skinPixels++;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height * 0.4;
+    const radiusX = canvas.width * 0.2;
+    const radiusY = canvas.height * 0.2;
+
+    let skinPixels = 0;
+    let totalPixels = 0;
+
+    for (let y = Math.max(0, centerY - radiusY); y < Math.min(canvas.height, centerY + radiusY); y += 4) {
+      for (let x = Math.max(0, centerX - radiusX); x < Math.min(canvas.width, centerX + radiusX); x += 4) {
+        const dx = (x - centerX) / radiusX;
+        const dy = (y - centerY) / radiusY;
+        if (dx * dx + dy * dy <= 1) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          const [r, g, b] = pixel;
+          if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) {
+            skinPixels++;
+          }
+          totalPixels++;
         }
       }
     }
 
-    const skinRatio = skinPixels / (Math.PI * checkRadius * checkRadius);
-    return skinRatio > 0.15;
-  }, []);
+    return totalPixels > 0 && (skinPixels / totalPixels) > 0.3;
+  };
 
-  useEffect(() => {
-    if (isCameraActive) {
-      detectionIntervalRef.current = setInterval(() => {
-        const detected = detectFace();
-        setFaceDetected(detected);
-      }, 200);
-    } else {
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
-        detectionIntervalRef.current = null;
-      }
-      setFaceDetected(false);
+  const startFaceDetection = () => {
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
     }
-
-    return () => {
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
+    
+    detectionIntervalRef.current = setInterval(() => {
+      const detected = detectFace();
+      setFaceDetected(detected);
+      
+      if (detected && countdown === null && !capturedPhoto) {
+        startCountdown();
       }
-    };
-  }, [isCameraActive, detectFace]);
+    }, 200);
+  };
 
   const startCamera = async () => {
     setCameraError(null);
     try {
+      console.log('🎥 Starting camera...');
       stopCamera();
       const constraints: MediaStreamConstraints = {
-        video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        
+        // Wait for video to be ready
+        await new Promise<void>((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => {
+              console.log('✅ Video ready');
+              resolve();
+            };
+          }
+        });
+        
         await videoRef.current.play();
         setIsCameraActive(true);
+        console.log('▶️ Camera active');
+        
+        // Start face detection after a short delay
+        setTimeout(() => {
+          startFaceDetection();
+        }, 500);
       }
     } catch (err: unknown) {
-      const error = err as { name?: string };
-      console.error('Camera error:', err);
+      const error = err as { name?: string; message?: string };
+      console.error('❌ Camera error:', err);
       if (error.name === 'NotAllowedError') {
-        setCameraError('Camera access denied. Please allow camera access.');
+        setCameraError('Camera access denied. Please allow camera permissions in your browser settings.');
       } else if (error.name === 'NotFoundError') {
-        setCameraError('No camera found on this device.');
+        setCameraError('No camera found. Please connect a camera and try again.');
       } else {
-        setCameraError('Could not access camera. Please try again.');
+        setCameraError(`Camera error: ${error.message || 'Please check your camera and try again.'}`);
       }
       setIsCameraActive(false);
     }
@@ -187,656 +207,538 @@ export default function Home() {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-    if (!context) return;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
     if (facingMode === 'user') {
-      context.translate(canvas.width, 0);
-      context.scale(-1, 1);
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
     }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = canvas.toDataURL('image/jpeg', 0.9);
-    setImage(imageData);
+    ctx.drawImage(video, 0, 0);
+    const photoData = canvas.toDataURL('image/jpeg', 0.95);
+    setCapturedPhoto(photoData);
     stopCamera();
-    setAnalysisResult(null);
-    setColorResult(null);
-    setError(null);
   };
 
-  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setError('Image size should be less than 10MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result as string);
-        setAnalysisResult(null);
-        setColorResult(null);
-        setError(null);
-      };
-      reader.readAsDataURL(file);
-    }
-  }, []);
+  const retakePhoto = () => {
+    setCapturedPhoto(null);
+    setHairResults(null);
+    setColorResults(null);
+    setError(null);
+    setCountdown(null);
+    startCamera();
+  };
 
-  const handleAnalyze = async () => {
-    if (!image) return;
+  const analyzePhoto = async () => {
+    if (!capturedPhoto) return;
+    
     setIsAnalyzing(true);
     setError(null);
-    setExpandedCard(null);
+    
     try {
-      if (activeMode === 'hairstyle') {
-        const result = await analyzeWithGemini(image);
-        setAnalysisResult(result);
-        setColorResult(null);
-      } else if (activeMode === 'color') {
-        const result = await analyzeColorWithGemini(image);
-        setColorResult(result);
-        setAnalysisResult(null);
+      if (analysisMode === 'hair') {
+        const result = await analyzeHairStyle(capturedPhoto);
+        setHairResults(result.recommendations);
+      } else if (analysisMode === 'color') {
+        const result = await analyzeHairColor(capturedPhoto);
+        setColorResults(result.recommendations);
       }
     } catch (err) {
-      setError('Analysis failed. Please try again.');
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const resetAnalysis = () => {
-    setImage(null);
-    setAnalysisResult(null);
-    setColorResult(null);
-    setError(null);
-    setExpandedCard(null);
-    stopCamera();
+  const startAnalysis = (mode: 'hair' | 'color' | 'bridal') => {
+    setAnalysisMode(mode);
+    setCurrentView('camera');
+    setTimeout(() => {
+      startCamera();
+    }, 100);
   };
 
+  const openImageViewer = (images: string[], styleTitle: string, startIndex: number = 0) => {
+    setViewerImages(images);
+    setSelectedStyle(styleTitle);
+    setCurrentImageIndex(startIndex);
+    setViewerOpen(true);
+  };
+
+  const closeImageViewer = () => {
+    setViewerOpen(false);
+    setViewerImages([]);
+    setCurrentImageIndex(0);
+  };
+
+  const nextImage = () => {
+    setCurrentImageIndex((prev) => (prev + 1) % viewerImages.length);
+  };
+
+  const previousImage = () => {
+    setCurrentImageIndex((prev) => (prev - 1 + viewerImages.length) % viewerImages.length);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   const getScoreColor = (score: number) => {
-    if (score >= 0.9) return 'text-teal-600 bg-teal-50 border-teal-200';
-    if (score >= 0.8) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-    if (score >= 0.7) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    return 'text-orange-600 bg-orange-50 border-orange-200';
+    if (score >= 0.8) return 'border-green-500 text-green-700 bg-green-50';
+    if (score >= 0.6) return 'border-teal-500 text-teal-700 bg-teal-50';
+    return 'border-purple-500 text-purple-700 bg-purple-50';
   };
 
   const getMaintenanceColor = (level: string) => {
-    switch (level) {
-      case 'Low': return 'text-teal-600 bg-teal-50';
-      case 'Medium': return 'text-yellow-600 bg-yellow-50';
-      case 'High': return 'text-red-600 bg-red-50';
-      default: return 'text-gray-600 bg-gray-50';
-    }
+    if (level === 'Low') return 'bg-green-100 text-green-800';
+    if (level === 'Medium') return 'bg-yellow-100 text-yellow-800';
+    return 'bg-orange-100 text-orange-800';
   };
 
-  if (!showApp) {
+  if (currentView === 'landing') {
     return (
-      <main className="min-h-screen bg-white">
+      <div className="min-h-screen bg-white">
         {/* Header */}
-        <nav className="border-b border-gray-100 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-20">
-              <div className="flex items-center gap-4">
-                <div className="relative w-12 h-12">
-                  <Image 
-                    src="/StyleVision_Logo.jpg" 
-                    alt="StyleVision" 
-                    width={48} 
-                    height={48}
-                    className="object-contain"
-                  />
-                </div>
-                <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-                  StyleVision
-                </span>
-              </div>
-              <button 
-                onClick={() => setShowApp(true)}
-                className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300"
-              >
-                Launch App
-              </button>
+        <header className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-12 h-12 rounded-lg" />
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
+                StyleVision
+              </h1>
             </div>
+            <button className="px-6 py-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-lg transition-shadow">
+              Sign In
+            </button>
           </div>
-        </nav>
+        </header>
 
         {/* Hero Section */}
-        <section className="pt-20 pb-32 px-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center">
-              {/* Main Logo */}
-              <div className="mb-12 flex justify-center">
-                <div className="relative">
-                  <div className="w-48 h-48 relative">
-                    <Image 
-                      src="/StyleVision_Logo.jpg" 
-                      alt="StyleVision AI" 
-                      width={192} 
-                      height={192}
-                      className="object-contain drop-shadow-2xl"
-                      priority
-                    />
-                  </div>
-                  <div className="absolute -bottom-3 -right-3 px-4 py-2 bg-gradient-to-r from-teal-500 to-teal-600 text-white text-sm font-bold rounded-full shadow-lg animate-bounce">
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4" />
-                      AI Powered
-                    </span>
-                  </div>
-                </div>
-              </div>
+        <section className="max-w-7xl mx-auto px-4 py-20 text-center">
+          <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-48 h-48 mx-auto mb-8 rounded-2xl shadow-2xl" />
+          <h2 className="text-5xl font-bold mb-6 bg-gradient-to-r from-purple-600 via-teal-500 to-purple-600 bg-clip-text text-transparent">
+            AI-Powered Beauty Analysis
+          </h2>
+          <p className="text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
+            Discover your perfect hairstyle, color palette, and bridal look with cutting-edge AI technology
+          </p>
 
-              {/* Main Headline */}
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black mb-6 tracking-tight">
-                <span className="bg-gradient-to-r from-purple-600 via-purple-500 to-teal-500 bg-clip-text text-transparent">
-                  Discover Your Perfect Style
-                </span>
-              </h1>
-              
-              <p className="text-xl sm:text-2xl text-gray-600 max-w-3xl mx-auto mb-12 leading-relaxed">
-                AI-powered beauty analysis for personalized hairstyle, hair color, and bridal styling recommendations
-              </p>
-
-              {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-                <button 
-                  onClick={() => setShowApp(true)}
-                  className="group px-10 py-5 bg-gradient-to-r from-purple-600 to-teal-500 text-white text-lg font-bold rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 flex items-center justify-center gap-3"
-                >
-                  <Camera className="w-6 h-6" />
-                  Start Free Analysis
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-                <button className="px-10 py-5 border-2 border-gray-200 text-gray-700 text-lg font-semibold rounded-2xl hover:border-purple-300 hover:bg-purple-50 transition-all duration-300">
-                  Learn More
-                </button>
-              </div>
-
-              {/* Trust Badges */}
-              <div className="flex flex-wrap items-center justify-center gap-6 text-gray-500">
-                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full border border-gray-200">
-                  <CheckCircle className="w-5 h-5 text-teal-500" />
-                  <span className="text-sm font-medium">100% Privacy Protected</span>
-                </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full border border-gray-200">
-                  <Zap className="w-5 h-5 text-purple-500" />
-                  <span className="text-sm font-medium">Instant Results</span>
-                </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full border border-gray-200">
-                  <Sparkles className="w-5 h-5 text-teal-500" />
-                  <span className="text-sm font-medium">Google Gemini AI</span>
-                </div>
-              </div>
-            </div>
+          {/* CTA Buttons */}
+          <div className="flex flex-wrap justify-center gap-4 mb-16">
+            <button
+              onClick={() => startAnalysis('hair')}
+              className="group px-8 py-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl font-semibold hover:shadow-xl transition-all transform hover:-translate-y-1 flex items-center gap-2"
+            >
+              <Sparkles className="w-5 h-5" />
+              Hair Analysis
+            </button>
+            <button
+              onClick={() => startAnalysis('color')}
+              className="group px-8 py-4 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all transform hover:-translate-y-1 flex items-center gap-2"
+            >
+              <Palette className="w-5 h-5" />
+              Color Analysis
+            </button>
+            <button
+              onClick={() => startAnalysis('bridal')}
+              className="group px-8 py-4 bg-gradient-to-r from-purple-600 via-teal-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all transform hover:-translate-y-1 flex items-center gap-2"
+            >
+              <Heart className="w-5 h-5" />
+              Bridal Studio
+            </button>
           </div>
-        </section>
 
-        {/* Features Section */}
-        <section className="py-24 bg-gradient-to-b from-gray-50 to-white">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="text-center mb-16">
-              <p className="text-purple-600 font-semibold mb-3 tracking-wide uppercase text-sm">Features</p>
-              <h2 className="text-4xl sm:text-5xl font-bold mb-4 text-gray-900">
-                Powered by Advanced AI
-              </h2>
-              <p className="text-gray-600 max-w-2xl mx-auto text-lg">
-                Professional-quality style recommendations using cutting-edge technology
-              </p>
+          {/* Features */}
+          <div className="grid md:grid-cols-3 gap-8 mt-20">
+            <div className="p-6 bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-purple-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Camera className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Live Camera Analysis</h3>
+              <p className="text-gray-600">Real-time face detection with instant AI-powered recommendations</p>
             </div>
-
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {/* Hair Analysis */}
-              <div className="bg-white p-8 rounded-2xl border border-gray-100 hover:border-purple-200 hover:shadow-xl transition-all duration-300 group">
-                <div className="w-14 h-14 bg-gradient-to-br from-purple-100 to-purple-50 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                  <Scissors className="w-7 h-7 text-purple-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Hair Analysis</h3>
-                <p className="text-gray-600 leading-relaxed">
-                  Get personalized hairstyle recommendations based on your face shape, features, and style preferences
-                </p>
+            <div className="p-6 bg-gradient-to-br from-teal-50 to-white rounded-xl border border-teal-100">
+              <div className="w-16 h-16 bg-gradient-to-br from-teal-500 to-teal-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-white" />
               </div>
-
-              {/* Color Analysis */}
-              <div className="bg-white p-8 rounded-2xl border border-gray-100 hover:border-teal-200 hover:shadow-xl transition-all duration-300 group">
-                <div className="w-14 h-14 bg-gradient-to-br from-teal-100 to-teal-50 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                  <Palette className="w-7 h-7 text-teal-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Color Analysis</h3>
-                <p className="text-gray-600 leading-relaxed">
-                  Discover your color season and perfect hair colors that complement your natural skin tone
-                </p>
-              </div>
-
-              {/* Bridal Studio */}
-              <div className="bg-white p-8 rounded-2xl border border-gray-100 hover:border-purple-200 hover:shadow-xl transition-all duration-300 group">
-                <div className="w-14 h-14 bg-gradient-to-br from-purple-100 to-teal-50 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                  <Star className="w-7 h-7 text-purple-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Bridal Studio</h3>
-                <p className="text-gray-600 leading-relaxed">
-                  Special bridal hairstyle and makeup recommendations for your perfect wedding day look
-                </p>
-              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">AI-Powered Insights</h3>
+              <p className="text-gray-600">Gemini 2.0 Flash delivers professional-grade beauty analysis</p>
             </div>
-          </div>
-        </section>
-
-        {/* How It Works */}
-        <section className="py-24">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="text-center mb-16">
-              <p className="text-teal-600 font-semibold mb-3 tracking-wide uppercase text-sm">Process</p>
-              <h2 className="text-4xl sm:text-5xl font-bold mb-4 text-gray-900">
-                Three Simple Steps
-              </h2>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-12">
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-purple-600 to-purple-500 rounded-2xl flex items-center justify-center text-white text-3xl font-black shadow-xl">
-                  1
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Capture Photo</h3>
-                <p className="text-gray-600">
-                  Use your camera or upload a photo. Our AI works best with clear, front-facing shots
-                </p>
+            <div className="p-6 bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-600 via-teal-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Heart className="w-8 h-8 text-white" />
               </div>
-
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-teal-600 to-teal-500 rounded-2xl flex items-center justify-center text-white text-3xl font-black shadow-xl">
-                  2
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">AI Analysis</h3>
-                <p className="text-gray-600">
-                  Our advanced AI analyzes your facial features, skin tone, and current style
-                </p>
-              </div>
-
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-purple-600 to-teal-500 rounded-2xl flex items-center justify-center text-white text-3xl font-black shadow-xl">
-                  3
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Get Results</h3>
-                <p className="text-gray-600">
-                  Receive personalized recommendations with confidence scores and styling tips
-                </p>
-              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Personalized Results</h3>
+              <p className="text-gray-600">Tailored recommendations based on your unique features</p>
             </div>
           </div>
         </section>
 
         {/* Footer */}
-        <footer className="border-t border-gray-100 py-12 bg-gray-50">
-          <div className="max-w-7xl mx-auto px-4 text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <Image 
-                src="/StyleVision_Logo.jpg" 
-                alt="StyleVision" 
-                width={40} 
-                height={40}
-                className="object-contain"
-              />
-              <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-                StyleVision
-              </span>
+        <footer className="bg-gradient-to-r from-gray-900 to-gray-800 text-white py-12 mt-20">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-10 h-10 rounded-lg" />
+              <span className="text-xl font-bold">StyleVision</span>
             </div>
-            <p className="text-gray-500 text-sm">
-              © 2025 StyleVision AI. Your photos are never stored or shared.
+            <p className="text-center text-gray-400">
+              © 2025 StyleVision. AI-Powered Beauty Analysis Platform.
             </p>
           </div>
         </footer>
-      </main>
+      </div>
     );
   }
 
-  // App Interface (Camera + Analysis)
+  // Camera View
   return (
-    <main className="min-h-screen bg-white">
-      {/* App Header */}
-      <nav className="border-b border-gray-100 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <Image 
-                src="/StyleVision_Logo.jpg" 
-                alt="StyleVision" 
-                width={40} 
-                height={40}
-                className="object-contain"
-              />
-              <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-                StyleVision
-              </span>
-            </div>
-            <button 
-              onClick={() => setShowApp(false)}
-              className="text-gray-600 hover:text-gray-900 font-medium"
-            >
-              ← Back to Home
-            </button>
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <button
+            onClick={() => { stopCamera(); setCurrentView('landing'); }}
+            className="flex items-center gap-2 text-gray-700 hover:text-gray-900"
+          >
+            <ChevronDown className="w-5 h-5 rotate-90" />
+            <span className="font-semibold">Back</span>
+          </button>
+          <div className="flex items-center gap-2">
+            <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-10 h-10 rounded-lg" />
+            <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
+              {analysisMode === 'hair' ? 'Hair Analysis' : analysisMode === 'color' ? 'Color Analysis' : 'Bridal Studio'}
+            </h1>
           </div>
+          <div className="w-20" />
         </div>
-      </nav>
+      </header>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Mode Selection */}
-        <div className="flex justify-center gap-4 mb-8">
-          <button
-            onClick={() => setActiveMode('hairstyle')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-              activeMode === 'hairstyle'
-                ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            <Scissors className="w-5 h-5 inline mr-2" />
-            Hair Analysis
-          </button>
-          <button
-            onClick={() => setActiveMode('color')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-              activeMode === 'color'
-                ? 'bg-gradient-to-r from-teal-600 to-teal-500 text-white shadow-lg'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            <Palette className="w-5 h-5 inline mr-2" />
-            Color Analysis
-          </button>
-          <button
-            onClick={() => setActiveMode('bridal')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-              activeMode === 'bridal'
-                ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white shadow-lg'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            <Star className="w-5 h-5 inline mr-2" />
-            Bridal Studio
-          </button>
-        </div>
-
-        {!image ? (
-          <div className="max-w-2xl mx-auto">
-            {/* Capture Mode Toggle */}
-            <div className="flex justify-center gap-4 mb-6">
-              <button
-                onClick={() => {
-                  setCaptureMode('camera');
-                  if (!isCameraActive) startCamera();
-                }}
-                className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
-                  captureMode === 'camera'
-                    ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
-                    : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Camera className="w-5 h-5 inline mr-2" />
-                Use Camera
-              </button>
-              <button
-                onClick={() => {
-                  setCaptureMode('upload');
-                  stopCamera();
-                }}
-                className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
-                  captureMode === 'upload'
-                    ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
-                    : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <Upload className="w-5 h-5 inline mr-2" />
-                Upload Photo
-              </button>
-            </div>
-
-            {captureMode === 'camera' ? (
-              <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
-                {/* Camera Window */}
-                <div className="relative aspect-[4/5] max-w-md mx-auto bg-gray-100 rounded-xl overflow-hidden">
-                  {isCameraActive ? (
-                    <>
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className="w-full h-full object-cover"
-                        style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
-                      />
-                      
-                      {/* Face Detection Overlay */}
-                      <div className="absolute inset-0 pointer-events-none">
-                        <svg className="w-full h-full">
-                          <ellipse
-                            cx="50%"
-                            cy="40%"
-                            rx="35%"
-                            ry="30%"
-                            fill="none"
-                            stroke={faceDetected ? logoColors.teal : logoColors.purple}
-                            strokeWidth="3"
-                            strokeDasharray="10,5"
-                            className="transition-all duration-300"
-                          />
-                        </svg>
-                      </div>
-
-                      {/* Status Message */}
-                      <div className="absolute top-4 left-0 right-0 flex justify-center">
-                        <div className={`px-4 py-2 rounded-full font-semibold text-sm ${
-                          faceDetected 
-                            ? 'bg-teal-500 text-white' 
-                            : 'bg-purple-500 text-white'
-                        }`}>
-                          {faceDetected ? '✓ Face Detected - Ready!' : 'Position your face in the oval'}
-                        </div>
-                      </div>
-
-                      {/* Countdown */}
-                      {countdown !== null && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                          <div className="text-8xl font-black text-white animate-ping">
-                            {countdown}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Camera Controls */}
-                      <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
-                        {hasMultipleCameras && (
-                          <button
-                            onClick={switchCamera}
-                            className="p-3 bg-white/90 backdrop-blur rounded-full hover:bg-white transition-all shadow-lg"
-                          >
-                            <SwitchCamera className="w-6 h-6 text-gray-700" />
-                          </button>
-                        )}
-                        <button
-                          onClick={faceDetected ? startCountdown : undefined}
-                          disabled={!faceDetected || countdown !== null}
-                          className={`px-8 py-3 rounded-full font-bold transition-all shadow-lg ${
-                            faceDetected && countdown === null
-                              ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white hover:scale-105'
-                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          <Camera className="w-5 h-5 inline mr-2" />
-                          Capture Photo
-                        </button>
-                        <button
-                          onClick={capturePhoto}
-                          className="p-3 bg-white/90 backdrop-blur rounded-full hover:bg-white transition-all shadow-lg"
-                        >
-                          <span className="text-sm font-medium text-gray-700">Manual</span>
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Camera/Photo Section */}
+          <div>
+            <div className="bg-white rounded-2xl border-2 border-gray-200 p-6 mb-6">
+              {!capturedPhoto ? (
+                <>
+                  {/* Camera Controls */}
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-gray-900">Position Your Face</h3>
+                    {isCameraActive && (
                       <button
-                        onClick={startCamera}
-                        className="px-8 py-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-xl"
+                        onClick={switchCamera}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
                       >
-                        <Camera className="w-6 h-6 inline mr-2" />
-                        Start Camera
+                        <RefreshCw className="w-5 h-5 text-gray-700" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Camera Window */}
+                  <div className="relative w-full max-w-md mx-auto aspect-[4/5] bg-gray-900 rounded-xl overflow-hidden">
+                    {isCameraActive ? (
+                      <>
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="w-full h-full object-cover"
+                          style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+                        />
+                        
+                        {/* Face Detection Overlay */}
+                        <div className="absolute inset-0 pointer-events-none">
+                          <svg className="w-full h-full">
+                            <ellipse
+                              cx="50%"
+                              cy="40%"
+                              rx="35%"
+                              ry="30%"
+                              fill="none"
+                              stroke={faceDetected ? logoColors.teal : logoColors.purple}
+                              strokeWidth="3"
+                              strokeDasharray="10,5"
+                              opacity="0.8"
+                            />
+                          </svg>
+                        </div>
+
+                        {/* Status Message */}
+                        <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/70 backdrop-blur-sm rounded-full">
+                          <p className="text-white text-sm font-semibold">
+                            {faceDetected ? '✓ Face Detected - Ready!' : 'Position your face in the oval'}
+                          </p>
+                        </div>
+
+                        {/* Countdown */}
+                        {countdown !== null && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                            <div className="text-8xl font-bold text-white animate-pulse">
+                              {countdown}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-8">
+                        <Camera className="w-16 h-16 text-gray-500 mb-4" />
+                        <button
+                          onClick={startCamera}
+                          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-lg transition-shadow"
+                        >
+                          Start Camera
+                        </button>
+                        {cameraError && (
+                          <p className="mt-4 text-sm text-red-600 text-center">{cameraError}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Manual Capture Button */}
+                  {isCameraActive && (
+                    <div className="flex justify-center mt-6">
+                      <button
+                        onClick={capturePhoto}
+                        className="px-8 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-xl transition-all flex items-center gap-2"
+                      >
+                        <Camera className="w-5 h-5" />
+                        Capture Now
                       </button>
                     </div>
                   )}
-                </div>
-
-                {cameraError && (
-                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                    {cameraError}
+                </>
+              ) : (
+                <>
+                  {/* Captured Photo */}
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Your Photo</h3>
+                  <div className="relative w-full max-w-md mx-auto aspect-[4/5] bg-gray-100 rounded-xl overflow-hidden mb-6">
+                    <img src={capturedPhoto} alt="Captured" className="w-full h-full object-cover" />
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl border-2 border-dashed border-gray-300 p-12">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
-                <div className="text-center">
-                  <Upload className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">Upload Your Photo</h3>
-                  <p className="text-gray-500 mb-6">JPG, PNG or JPEG (max 10MB)</p>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-8 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-lg"
-                  >
-                    Choose File
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="grid lg:grid-cols-2 gap-8">
-            {/* Image Preview */}
-            <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
-              <div className="relative aspect-square max-w-md mx-auto bg-gray-100 rounded-xl overflow-hidden">
-                <img src={image} alt="Captured" className="w-full h-full object-cover" />
-                <button
-                  onClick={resetAnalysis}
-                  className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all"
-                >
-                  <X className="w-5 h-5 text-gray-700" />
-                </button>
-              </div>
 
-              {!analysisResult && !colorResult && (
-                <button
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing}
-                  className="w-full mt-6 px-8 py-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 className="w-5 h-5 inline mr-2 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5 inline mr-2" />
-                      Analyze with AI
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-
-            {/* Results */}
-            {(analysisResult || colorResult) && (
-              <div className="space-y-4">
-                {analysisResult && analysisResult.recommendations.map((rec, idx) => (
-                  <div key={idx} className="bg-white rounded-xl border-2 border-gray-200 p-6 hover:border-purple-300 transition-all">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900">{rec.name}</h3>
-                        <p className="text-sm text-gray-500">{rec.description}</p>
-                      </div>
-                      <div className={`px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.suitabilityScore)}`}>
-                        {Math.round(rec.suitabilityScore * 100)}%
-                      </div>
-                    </div>
-                    
-                    {expandedCard === idx && (
-                      <div className="space-y-3 pt-4 border-t border-gray-100">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700 mb-1">Best For</p>
-                          <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                            {rec.bestFor.map((item, i) => <li key={i}>{item}</li>)}
-                          </ul>
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-700 mb-1">Styling Tips</p>
-                          <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                            {rec.stylingTips.map((tip, i) => <li key={i}>{tip}</li>)}
-                          </ul>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-gray-700">Maintenance:</span>
-                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${getMaintenanceColor(rec.maintenanceLevel)}`}>
-                            {rec.maintenanceLevel}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    
+                  {/* Action Buttons */}
+                  <div className="flex gap-4">
                     <button
-                      onClick={() => setExpandedCard(expandedCard === idx ? null : idx)}
-                      className="mt-4 text-purple-600 font-semibold text-sm hover:text-purple-700 transition-colors flex items-center gap-1"
+                      onClick={retakePhoto}
+                      className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
                     >
-                      {expandedCard === idx ? (
-                        <>Less Details <ChevronUp className="w-4 h-4" /></>
+                      <RefreshCw className="w-5 h-5" />
+                      Retake
+                    </button>
+                    <button
+                      onClick={analyzePhoto}
+                      disabled={isAnalyzing}
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isAnalyzing ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          Analyzing...
+                        </>
                       ) : (
-                        <>More Details <ChevronDown className="w-4 h-4" /></>
+                        <>
+                          <Sparkles className="w-5 h-5" />
+                          Analyze
+                        </>
                       )}
                     </button>
                   </div>
-                ))}
+                </>
+              )}
+            </div>
 
-                {colorResult && (
-                  <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-                    <h3 className="text-xl font-bold text-gray-900 mb-4">Your Color Profile</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-700 mb-2">Season</p>
-                        <p className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-                          {colorResult.season}
-                        </p>
+            <canvas ref={canvasRef} className="hidden" />
+          </div>
+
+          {/* Results Section */}
+          <div>
+            {(hairResults || colorResults) && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-900">Your Personalized Recommendations</h2>
+
+                {/* Hairstyle Results with Interactive Images */}
+                {hairResults?.map((rec, idx) => {
+                  const styleImages = getHairstyleImages(rec.name);
+                  
+                  return (
+                    <div key={idx} className="bg-white rounded-2xl border-2 border-gray-200 p-6 hover:border-purple-300 transition-all">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900">{rec.name}</h3>
+                          <p className="text-sm text-gray-500">{rec.description}</p>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.suitabilityScore)}`}>
+                          {Math.round(rec.suitabilityScore * 100)}%
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-700 mb-2">Recommended Colors</p>
-                        <div className="flex flex-wrap gap-2">
-                          {colorResult.recommendations.map((color, i) => (
-                            <span key={i} className="px-4 py-2 bg-gradient-to-r from-purple-100 to-teal-100 text-gray-800 rounded-full text-sm font-medium">
-                              {color.colorName}
+
+                      {/* Image Gallery Grid */}
+                      <div className="grid grid-cols-3 gap-2 mb-4">
+                        {styleImages.slice(0, 6).map((imgSrc, imgIdx) => (
+                          <button
+                            key={imgIdx}
+                            onClick={() => openImageViewer(styleImages, rec.name, imgIdx)}
+                            className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden group cursor-pointer hover:ring-2 hover:ring-purple-500 transition-all"
+                          >
+                            <img
+                              src={imgSrc}
+                              alt={`${rec.name} angle ${imgIdx + 1}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                // Fallback for missing images
+                                e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23f3f4f6" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="14" fill="%239ca3af" text-anchor="middle" dy=".3em"%3EStyle Photo %23' + (imgIdx + 1) + '%3C/text%3E%3C/svg%3E';
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                              <RotateCw className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            {imgIdx === 0 && (
+                              <div className="absolute top-1 left-1 px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-semibold">
+                                Main
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Expandable Details */}
+                      {expandedCard === idx && (
+                        <div className="space-y-3 pt-4 border-t border-gray-100">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700 mb-1">Best For</p>
+                            <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+                              {rec.bestFor.map((item, i) => <li key={i}>{item}</li>)}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700 mb-1">Styling Tips</p>
+                            <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+                              {rec.stylingTips.map((tip, i) => <li key={i}>{tip}</li>)}
+                            </ul>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-700">Maintenance:</span>
+                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${getMaintenanceColor(rec.maintenanceLevel)}`}>
+                              {rec.maintenanceLevel}
                             </span>
-                          ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <button
+                        onClick={() => setExpandedCard(expandedCard === idx ? null : idx)}
+                        className="mt-4 text-purple-600 font-semibold text-sm hover:text-purple-700 transition-colors flex items-center gap-1"
+                      >
+                        {expandedCard === idx ? (
+                          <>Less Details <ChevronUp className="w-4 h-4" /></>
+                        ) : (
+                          <>More Details <ChevronDown className="w-4 h-4" /></>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Color Results */}
+                {colorResults?.map((color, idx) => (
+                  <div key={idx} className="bg-white rounded-2xl border-2 border-gray-200 p-6">
+                    <div className="flex items-start gap-4">
+                      <div
+                        className="w-16 h-16 rounded-lg shadow-lg"
+                        style={{ backgroundColor: color.hexCode }}
+                      />
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-gray-900">{color.colorName}</h3>
+                        <p className="text-sm text-gray-500 mb-2">{color.description}</p>
+                        <div className={`inline-flex px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(color.suitabilityScore)}`}>
+                          {Math.round(color.suitabilityScore * 100)}% Match
                         </div>
                       </div>
                     </div>
                   </div>
-                )}
+                ))}
               </div>
             )}
 
             {error && (
-              <div className="lg:col-span-2 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
                 {error}
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
 
-      <canvas ref={canvasRef} className="hidden" />
-    </main>
+      {/* Image Viewer Modal */}
+      {viewerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4">
+          <button
+            onClick={closeImageViewer}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          <div className="max-w-4xl w-full">
+            <h2 className="text-2xl font-bold text-white mb-4 text-center">{selectedStyle}</h2>
+            
+            <div className="relative aspect-square bg-black rounded-2xl overflow-hidden mb-4">
+              <img
+                src={viewerImages[currentImageIndex]}
+                alt={`${selectedStyle} view ${currentImageIndex + 1}`}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="800"%3E%3Crect fill="%23111827" width="800" height="800"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%236b7280" text-anchor="middle" dy=".3em"%3EStyle Photo %23' + (currentImageIndex + 1) + '%3C/text%3E%3C/svg%3E';
+                }}
+              />
+              
+              {/* Navigation Arrows */}
+              <button
+                onClick={previousImage}
+                className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
+              >
+                <ChevronDown className="w-6 h-6 rotate-90" />
+              </button>
+              <button
+                onClick={nextImage}
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
+              >
+                <ChevronDown className="w-6 h-6 -rotate-90" />
+              </button>
+            </div>
+
+            {/* Thumbnail Strip */}
+            <div className="flex gap-2 justify-center overflow-x-auto pb-2">
+              {viewerImages.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentImageIndex(idx)}
+                  className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden transition-all ${
+                    currentImageIndex === idx ? 'ring-2 ring-purple-500 scale-105' : 'opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <img
+                    src={img}
+                    alt={`Thumbnail ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="80"%3E%3Crect fill="%23374151" width="80" height="80"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="10" fill="%239ca3af" text-anchor="middle" dy=".3em"%3E' + (idx + 1) + '%3C/text%3E%3C/svg%3E';
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <p className="text-white/60 text-center mt-4 text-sm">
+              {currentImageIndex + 1} of {viewerImages.length} • Click arrows or thumbnails to rotate views
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
