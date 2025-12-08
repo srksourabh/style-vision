@@ -1,62 +1,12 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, Upload, Sparkles, Loader2, ChevronDown, ChevronUp, Star, Clock, Scissors, Palette, Zap, Shield, Video, SwitchCamera, X, ArrowRight, Brain, Heart } from 'lucide-react';
+import { Camera, Upload, Sparkles, Loader2, ChevronDown, ChevronUp, Star, Scissors, Palette, SwitchCamera, X, ArrowRight, CheckCircle, Zap } from 'lucide-react';
 import { analyzeWithGemini, analyzeColorWithGemini, AnalysisResult, ColorAnalysisResult } from '@/utils/geminiService';
+import Image from 'next/image';
 
-type AnalysisMode = 'hairstyle' | 'color';
+type AnalysisMode = 'hairstyle' | 'color' | 'bridal';
 type CaptureMode = 'upload' | 'camera';
-
-const StyleVisionLogo = ({ size = 'large' }: { size?: 'small' | 'medium' | 'large' }) => {
-  const dimensions = { small: 48, medium: 80, large: 200 };
-  const s = dimensions[size];
-  
-  return (
-    <div className="relative group">
-      <svg width={s} height={s} viewBox="0 0 200 200" className="drop-shadow-2xl">
-        <defs>
-          <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#1e1b4b" />
-            <stop offset="50%" stopColor="#0f172a" />
-            <stop offset="100%" stopColor="#042f2e" />
-          </linearGradient>
-          <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#a855f7" />
-            <stop offset="100%" stopColor="#7c3aed" />
-          </linearGradient>
-          <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#2dd4bf" />
-            <stop offset="100%" stopColor="#14b8a6" />
-          </linearGradient>
-          <linearGradient id="mixedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#a855f7" />
-            <stop offset="50%" stopColor="#6366f1" />
-            <stop offset="100%" stopColor="#14b8a6" />
-          </linearGradient>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-        <circle cx="100" cy="100" r="95" fill="url(#bgGrad)" stroke="url(#mixedGrad)" strokeWidth="2"/>
-        <circle cx="100" cy="100" r="85" fill="none" stroke="url(#purpleGrad)" strokeWidth="1" opacity="0.3"/>
-        <path d="M70 60 Q100 55 120 70 Q145 90 130 110 Q115 130 100 125 Q85 120 75 130 Q60 145 80 155 Q110 170 135 150" fill="none" stroke="url(#purpleGrad)" strokeWidth="8" strokeLinecap="round" filter="url(#glow)" className="animate-pulse"/>
-        <path d="M65 70 Q75 50 90 55" fill="none" stroke="url(#tealGrad)" strokeWidth="4" strokeLinecap="round" opacity="0.8"/>
-        <path d="M130 65 Q145 75 140 90" fill="none" stroke="url(#tealGrad)" strokeWidth="4" strokeLinecap="round" opacity="0.8"/>
-        <circle cx="55" cy="90" r="4" fill="url(#tealGrad)" className="animate-ping" style={{animationDuration: '2s'}}/>
-        <circle cx="150" cy="105" r="3" fill="url(#purpleGrad)" className="animate-ping" style={{animationDuration: '2.5s', animationDelay: '0.5s'}}/>
-        <circle cx="95" cy="45" r="3" fill="url(#tealGrad)" className="animate-ping" style={{animationDuration: '3s', animationDelay: '1s'}}/>
-        <ellipse cx="100" cy="100" rx="25" ry="18" fill="none" stroke="url(#tealGrad)" strokeWidth="3" opacity="0.6"/>
-        <circle cx="100" cy="100" r="8" fill="url(#mixedGrad)"/>
-        <circle cx="103" cy="97" r="3" fill="white" opacity="0.8"/>
-      </svg>
-      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-500/20 to-teal-500/20 blur-xl -z-10 group-hover:blur-2xl transition-all duration-500" />
-    </div>
-  );
-};
 
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
@@ -72,11 +22,23 @@ export default function Home() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [faceDetected, setFaceDetected] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Logo colors from the uploaded image
+  const logoColors = {
+    purple: '#a855f7',
+    purpleDark: '#7c3aed',
+    teal: '#14b8a6',
+    tealLight: '#2dd4bf',
+    navy: '#1e1b4b',
+  };
 
   useEffect(() => {
     const checkCameras = async () => {
@@ -94,6 +56,67 @@ export default function Home() {
   useEffect(() => {
     return () => { stopCamera(); };
   }, []);
+
+  const detectFace = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current) return false;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return false;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    let skinPixels = 0;
+    const totalPixels = canvas.width * canvas.height;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const checkRadius = Math.min(canvas.width, canvas.height) * 0.25;
+
+    for (let y = Math.max(0, centerY - checkRadius); y < Math.min(canvas.height, centerY + checkRadius); y++) {
+      for (let x = Math.max(0, centerX - checkRadius); x < Math.min(canvas.width, centerX + checkRadius); x++) {
+        const i = (y * canvas.width + x) * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        if (r > 95 && g > 40 && b > 20 &&
+            r > g && r > b &&
+            Math.abs(r - g) > 15) {
+          skinPixels++;
+        }
+      }
+    }
+
+    const skinRatio = skinPixels / (Math.PI * checkRadius * checkRadius);
+    return skinRatio > 0.15;
+  }, []);
+
+  useEffect(() => {
+    if (isCameraActive) {
+      detectionIntervalRef.current = setInterval(() => {
+        const detected = detectFace();
+        setFaceDetected(detected);
+      }, 200);
+    } else {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+        detectionIntervalRef.current = null;
+      }
+      setFaceDetected(false);
+    }
+
+    return () => {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+    };
+  }, [isCameraActive, detectFace]);
 
   const startCamera = async () => {
     setCameraError(null);
@@ -130,6 +153,11 @@ export default function Home() {
     }
     if (videoRef.current) { videoRef.current.srcObject = null; }
     setIsCameraActive(false);
+    setFaceDetected(false);
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
   };
 
   const switchCamera = async () => {
@@ -139,6 +167,20 @@ export default function Home() {
       stopCamera();
       setTimeout(() => { startCamera(); }, 100);
     }
+  };
+
+  const startCountdown = () => {
+    setCountdown(3);
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          capturePhoto();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   const capturePhoto = () => {
@@ -190,7 +232,7 @@ export default function Home() {
         const result = await analyzeWithGemini(image);
         setAnalysisResult(result);
         setColorResult(null);
-      } else {
+      } else if (activeMode === 'color') {
         const result = await analyzeColorWithGemini(image);
         setColorResult(result);
         setAnalysisResult(null);
@@ -213,490 +255,586 @@ export default function Home() {
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 0.9) return 'text-teal-400 bg-teal-500/20 border-teal-500/30';
-    if (score >= 0.8) return 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30';
-    if (score >= 0.7) return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30';
-    return 'text-orange-400 bg-orange-500/20 border-orange-500/30';
+    if (score >= 0.9) return 'text-teal-600 bg-teal-50 border-teal-200';
+    if (score >= 0.8) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+    if (score >= 0.7) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    return 'text-orange-600 bg-orange-50 border-orange-200';
   };
 
   const getMaintenanceColor = (level: string) => {
     switch (level) {
-      case 'Low': return 'text-teal-400 bg-teal-500/20';
-      case 'Medium': return 'text-yellow-400 bg-yellow-500/20';
-      case 'High': return 'text-red-400 bg-red-500/20';
-      default: return 'text-slate-400 bg-slate-500/20';
+      case 'Low': return 'text-teal-600 bg-teal-50';
+      case 'Medium': return 'text-yellow-600 bg-yellow-50';
+      case 'High': return 'text-red-600 bg-red-50';
+      default: return 'text-gray-600 bg-gray-50';
     }
   };
 
   if (!showApp) {
     return (
-      <main className="min-h-screen relative overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="orb orb-purple w-[700px] h-[700px] -top-64 -left-64" />
-          <div className="orb orb-teal w-[600px] h-[600px] top-1/2 -right-64" style={{ animationDelay: '-5s' }} />
-          <div className="orb orb-purple w-[500px] h-[500px] -bottom-48 left-1/3" style={{ animationDelay: '-10s' }} />
-          <div className="orb orb-teal w-[300px] h-[300px] top-1/4 right-1/4" style={{ animationDelay: '-7s' }} />
-        </div>
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(139,92,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(139,92,246,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-        <div className="relative z-10">
-          <nav className="max-w-7xl mx-auto px-4 py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <StyleVisionLogo size="small" />
-                <span className="text-xl font-bold gradient-text">StyleVision</span>
+      <main className="min-h-screen bg-white">
+        {/* Header */}
+        <nav className="border-b border-gray-100 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-20">
+              <div className="flex items-center gap-4">
+                <div className="relative w-12 h-12">
+                  <Image 
+                    src="/StyleVision_Logo.jpg" 
+                    alt="StyleVision" 
+                    width={48} 
+                    height={48}
+                    className="object-contain"
+                  />
+                </div>
+                <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
+                  StyleVision
+                </span>
               </div>
-              <button onClick={() => setShowApp(true)} className="px-6 py-2.5 rounded-full bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:border-purple-500/50 transition-all duration-300">
+              <button 
+                onClick={() => setShowApp(true)}
+                className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300"
+              >
                 Launch App
               </button>
             </div>
-          </nav>
-          <div className="max-w-7xl mx-auto px-4 pt-12 pb-24">
-            <div className="text-center max-w-5xl mx-auto">
-              <div className="mb-10 flex justify-center">
+          </div>
+        </nav>
+
+        {/* Hero Section */}
+        <section className="pt-20 pb-32 px-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center">
+              {/* Main Logo */}
+              <div className="mb-12 flex justify-center">
                 <div className="relative">
-                  <StyleVisionLogo size="large" />
-                  <div className="absolute -bottom-2 -right-2 px-4 py-2 rounded-full bg-gradient-to-r from-teal-500 to-teal-600 text-white text-sm font-semibold shadow-lg shadow-teal-500/30 animate-bounce">
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="w-4 h-4" /> AI Powered
+                  <div className="w-48 h-48 relative">
+                    <Image 
+                      src="/StyleVision_Logo.jpg" 
+                      alt="StyleVision AI" 
+                      width={192} 
+                      height={192}
+                      className="object-contain drop-shadow-2xl"
+                      priority
+                    />
+                  </div>
+                  <div className="absolute -bottom-3 -right-3 px-4 py-2 bg-gradient-to-r from-teal-500 to-teal-600 text-white text-sm font-bold rounded-full shadow-lg animate-bounce">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4" />
+                      AI Powered
                     </span>
                   </div>
                 </div>
               </div>
-              <h1 className="text-5xl md:text-7xl lg:text-8xl font-black mb-6 tracking-tight">
-                <span className="gradient-text">Style</span>
-                <span className="text-white">Vision</span>
-                <span className="text-purple-400 opacity-80"> AI</span>
+
+              {/* Main Headline */}
+              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black mb-6 tracking-tight">
+                <span className="bg-gradient-to-r from-purple-600 via-purple-500 to-teal-500 bg-clip-text text-transparent">
+                  Discover Your Perfect Style
+                </span>
               </h1>
-              <p className="text-xl md:text-2xl text-slate-400 max-w-3xl mx-auto mb-12 leading-relaxed">
-                Discover your perfect hairstyle with <span className="text-purple-400 font-medium">AI-powered</span> face analysis.
-                Get personalized recommendations in <span className="text-teal-400 font-medium">seconds</span>.
+              
+              <p className="text-xl sm:text-2xl text-gray-600 max-w-3xl mx-auto mb-12 leading-relaxed">
+                AI-powered beauty analysis for personalized hairstyle, hair color, and bridal styling recommendations
               </p>
+
+              {/* CTA Buttons */}
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-                <button onClick={() => setShowApp(true)} className="group px-10 py-5 bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 text-white text-xl font-bold rounded-2xl shadow-2xl shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 transition-all duration-300 flex items-center justify-center gap-3">
+                <button 
+                  onClick={() => setShowApp(true)}
+                  className="group px-10 py-5 bg-gradient-to-r from-purple-600 to-teal-500 text-white text-lg font-bold rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 flex items-center justify-center gap-3"
+                >
                   <Camera className="w-6 h-6" />
-                  Get Started Free
+                  Start Free Analysis
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
-                <button className="px-10 py-5 border-2 border-slate-700 text-slate-300 text-xl font-semibold rounded-2xl hover:border-teal-500/50 hover:text-teal-400 hover:bg-teal-500/5 transition-all duration-300 flex items-center justify-center gap-3">
-                  <Video className="w-6 h-6" />
-                  Watch Demo
+                <button className="px-10 py-5 border-2 border-gray-200 text-gray-700 text-lg font-semibold rounded-2xl hover:border-purple-300 hover:bg-purple-50 transition-all duration-300">
+                  Learn More
                 </button>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-8 text-slate-500">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/30 border border-slate-700/50">
-                  <Shield className="w-5 h-5 text-teal-500" />
-                  <span>Photos Never Stored</span>
+
+              {/* Trust Badges */}
+              <div className="flex flex-wrap items-center justify-center gap-6 text-gray-500">
+                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full border border-gray-200">
+                  <CheckCircle className="w-5 h-5 text-teal-500" />
+                  <span className="text-sm font-medium">100% Privacy Protected</span>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/30 border border-slate-700/50">
+                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full border border-gray-200">
                   <Zap className="w-5 h-5 text-purple-500" />
-                  <span>Results in Seconds</span>
+                  <span className="text-sm font-medium">Instant Results</span>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/30 border border-slate-700/50">
+                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-full border border-gray-200">
                   <Sparkles className="w-5 h-5 text-teal-500" />
-                  <span>Powered by Gemini</span>
+                  <span className="text-sm font-medium">Google Gemini AI</span>
                 </div>
               </div>
             </div>
           </div>
-          <div className="max-w-7xl mx-auto px-4 py-24">
+        </section>
+
+        {/* Features Section */}
+        <section className="py-24 bg-gradient-to-b from-gray-50 to-white">
+          <div className="max-w-7xl mx-auto px-4">
             <div className="text-center mb-16">
-              <p className="text-purple-400 font-semibold mb-4 tracking-widest uppercase">Features</p>
-              <h2 className="text-4xl md:text-5xl font-bold mb-4">
-                <span className="text-white">Why Choose </span>
-                <span className="gradient-text">StyleVision</span>
+              <p className="text-purple-600 font-semibold mb-3 tracking-wide uppercase text-sm">Features</p>
+              <h2 className="text-4xl sm:text-5xl font-bold mb-4 text-gray-900">
+                Powered by Advanced AI
               </h2>
-              <p className="text-slate-400 max-w-2xl mx-auto text-lg">Advanced AI technology meets personalized style recommendations</p>
+              <p className="text-gray-600 max-w-2xl mx-auto text-lg">
+                Professional-quality style recommendations using cutting-edge technology
+              </p>
             </div>
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="card p-8 group hover:bg-gradient-to-br hover:from-purple-900/20 hover:to-slate-900/80">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-purple-600/20 border border-purple-500/30 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                  <Video className="w-8 h-8 text-purple-400" />
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {/* Hair Analysis */}
+              <div className="bg-white p-8 rounded-2xl border border-gray-100 hover:border-purple-200 hover:shadow-xl transition-all duration-300 group">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-100 to-purple-50 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Scissors className="w-7 h-7 text-purple-600" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Live Camera Capture</h3>
-                <p className="text-slate-400 leading-relaxed">Take a selfie directly with your phone or laptop camera. Works seamlessly on all modern browsers.</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">Hair Analysis</h3>
+                <p className="text-gray-600 leading-relaxed">
+                  Get personalized hairstyle recommendations based on your face shape, features, and style preferences
+                </p>
               </div>
-              <div className="card card-teal p-8 group hover:bg-gradient-to-br hover:from-teal-900/20 hover:to-slate-900/80">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500/20 to-teal-600/20 border border-teal-500/30 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:-rotate-3 transition-all duration-300">
-                  <Palette className="w-8 h-8 text-teal-400" />
+
+              {/* Color Analysis */}
+              <div className="bg-white p-8 rounded-2xl border border-gray-100 hover:border-teal-200 hover:shadow-xl transition-all duration-300 group">
+                <div className="w-14 h-14 bg-gradient-to-br from-teal-100 to-teal-50 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Palette className="w-7 h-7 text-teal-600" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Color Analysis</h3>
-                <p className="text-slate-400 leading-relaxed">Discover your color season and get hair color recommendations that complement your skin tone.</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">Color Analysis</h3>
+                <p className="text-gray-600 leading-relaxed">
+                  Discover your color season and perfect hair colors that complement your natural skin tone
+                </p>
               </div>
-              <div className="card p-8 group hover:bg-gradient-to-br hover:from-indigo-900/20 hover:to-slate-900/80">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                  <Brain className="w-8 h-8 text-indigo-400" />
+
+              {/* Bridal Studio */}
+              <div className="bg-white p-8 rounded-2xl border border-gray-100 hover:border-purple-200 hover:shadow-xl transition-all duration-300 group">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-100 to-teal-50 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Star className="w-7 h-7 text-purple-600" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">AI Face Analysis</h3>
-                <p className="text-slate-400 leading-relaxed">Our AI examines your face shape, features, and current hair to give personalized recommendations.</p>
-              </div>
-            </div>
-          </div>
-          <div className="max-w-7xl mx-auto px-4 py-24">
-            <div className="glass rounded-3xl p-10 md:p-16 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-purple-500/10 to-transparent rounded-full blur-3xl" />
-              <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-tr from-teal-500/10 to-transparent rounded-full blur-3xl" />
-              <div className="relative">
-                <div className="text-center mb-16">
-                  <p className="text-teal-400 font-semibold mb-4 tracking-widest uppercase">Process</p>
-                  <h2 className="text-4xl md:text-5xl font-bold">
-                    <span className="text-white">How It </span>
-                    <span className="gradient-text">Works</span>
-                  </h2>
-                </div>
-                <div className="grid md:grid-cols-3 gap-12">
-                  <div className="text-center">
-                    <div className="w-24 h-24 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-purple-600 to-purple-700 flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-purple-500/30 rotate-3 hover:rotate-0 transition-transform">1</div>
-                    <h3 className="text-xl font-bold text-white mb-3">Take a Selfie</h3>
-                    <p className="text-slate-400">Use your camera or upload an existing photo. Front-facing works best.</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-24 h-24 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-indigo-500/30 -rotate-3 hover:rotate-0 transition-transform">2</div>
-                    <h3 className="text-xl font-bold text-white mb-3">AI Analysis</h3>
-                    <p className="text-slate-400">Our AI examines your face shape, features, skin tone, and current hair.</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-24 h-24 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white text-4xl font-black shadow-2xl shadow-teal-500/30 rotate-3 hover:rotate-0 transition-transform">3</div>
-                    <h3 className="text-xl font-bold text-white mb-3">Get Results</h3>
-                    <p className="text-slate-400">Receive personalized hairstyle or color recommendations with styling tips.</p>
-                  </div>
-                </div>
-                <div className="text-center mt-16">
-                  <button onClick={() => setShowApp(true)} className="px-12 py-5 bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white text-lg font-bold rounded-2xl hover:shadow-2xl hover:shadow-purple-500/30 hover:scale-105 transition-all duration-300">
-                    Try It Now — It&apos;s Free
-                  </button>
-                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">Bridal Studio</h3>
+                <p className="text-gray-600 leading-relaxed">
+                  Special bridal hairstyle and makeup recommendations for your perfect wedding day look
+                </p>
               </div>
             </div>
           </div>
-          <footer className="py-16 border-t border-slate-800/50">
-            <div className="max-w-7xl mx-auto px-4">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex items-center gap-3">
-                  <StyleVisionLogo size="small" />
-                  <div>
-                    <span className="text-lg font-bold gradient-text">StyleVision AI</span>
-                    <p className="text-slate-500 text-sm">AI-Powered Hair Recommendations</p>
-                  </div>
+        </section>
+
+        {/* How It Works */}
+        <section className="py-24">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="text-center mb-16">
+              <p className="text-teal-600 font-semibold mb-3 tracking-wide uppercase text-sm">Process</p>
+              <h2 className="text-4xl sm:text-5xl font-bold mb-4 text-gray-900">
+                Three Simple Steps
+              </h2>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-12">
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-purple-600 to-purple-500 rounded-2xl flex items-center justify-center text-white text-3xl font-black shadow-xl">
+                  1
                 </div>
-                <div className="flex items-center gap-2 text-slate-500 text-sm">
-                  <span>Built with</span>
-                  <Heart className="w-4 h-4 text-red-500 fill-red-500" />
-                  <span>• Powered by Google Gemini 2.0 Flash</span>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">Capture Photo</h3>
+                <p className="text-gray-600">
+                  Use your camera or upload a photo. Our AI works best with clear, front-facing shots
+                </p>
+              </div>
+
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-teal-600 to-teal-500 rounded-2xl flex items-center justify-center text-white text-3xl font-black shadow-xl">
+                  2
                 </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">AI Analysis</h3>
+                <p className="text-gray-600">
+                  Our advanced AI analyzes your facial features, skin tone, and current style
+                </p>
+              </div>
+
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-purple-600 to-teal-500 rounded-2xl flex items-center justify-center text-white text-3xl font-black shadow-xl">
+                  3
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">Get Results</h3>
+                <p className="text-gray-600">
+                  Receive personalized recommendations with confidence scores and styling tips
+                </p>
               </div>
             </div>
-          </footer>
-        </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="border-t border-gray-100 py-12 bg-gray-50">
+          <div className="max-w-7xl mx-auto px-4 text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <Image 
+                src="/StyleVision_Logo.jpg" 
+                alt="StyleVision" 
+                width={40} 
+                height={40}
+                className="object-contain"
+              />
+              <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
+                StyleVision
+              </span>
+            </div>
+            <p className="text-gray-500 text-sm">
+              © 2025 StyleVision AI. Your photos are never stored or shared.
+            </p>
+          </div>
+        </footer>
       </main>
     );
   }
 
+  // App Interface (Camera + Analysis)
   return (
-    <main className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="orb orb-purple w-[400px] h-[400px] -top-32 -right-32 opacity-40" />
-        <div className="orb orb-teal w-[300px] h-[300px] bottom-0 -left-32 opacity-40" />
-      </div>
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(139,92,246,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(139,92,246,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
-      <canvas ref={canvasRef} className="hidden" />
-      <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
-        <div className="text-center mb-10">
-          <button onClick={() => { setShowApp(false); stopCamera(); resetAnalysis(); }} className="flex items-center justify-center gap-3 mb-4 mx-auto hover:opacity-80 transition-opacity group">
-            <StyleVisionLogo size="medium" />
-          </button>
-          <h1 className="text-3xl md:text-4xl font-black mb-2">
-            <span className="gradient-text">StyleVision</span>
-            <span className="text-white"> AI</span>
-          </h1>
-          <p className="text-slate-400 text-lg">Take a selfie or upload your photo for AI-powered recommendations</p>
-        </div>
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex rounded-2xl bg-slate-800/50 border border-slate-700/50 p-1.5 backdrop-blur-sm">
-            <button onClick={() => setActiveMode('hairstyle')} className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${activeMode === 'hairstyle' ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg shadow-purple-500/30' : 'text-slate-400 hover:text-white'}`}>
-              <Scissors className="w-4 h-4" />
-              Hairstyle
-            </button>
-            <button onClick={() => setActiveMode('color')} className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${activeMode === 'color' ? 'bg-gradient-to-r from-teal-600 to-teal-700 text-white shadow-lg shadow-teal-500/30' : 'text-slate-400 hover:text-white'}`}>
-              <Palette className="w-4 h-4" />
-              Color
+    <main className="min-h-screen bg-white">
+      {/* App Header */}
+      <nav className="border-b border-gray-100 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <Image 
+                src="/StyleVision_Logo.jpg" 
+                alt="StyleVision" 
+                width={40} 
+                height={40}
+                className="object-contain"
+              />
+              <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
+                StyleVision
+              </span>
+            </div>
+            <button 
+              onClick={() => setShowApp(false)}
+              className="text-gray-600 hover:text-gray-900 font-medium"
+            >
+              ← Back to Home
             </button>
           </div>
         </div>
+      </nav>
+
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Mode Selection */}
+        <div className="flex justify-center gap-4 mb-8">
+          <button
+            onClick={() => setActiveMode('hairstyle')}
+            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+              activeMode === 'hairstyle'
+                ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Scissors className="w-5 h-5 inline mr-2" />
+            Hair Analysis
+          </button>
+          <button
+            onClick={() => setActiveMode('color')}
+            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+              activeMode === 'color'
+                ? 'bg-gradient-to-r from-teal-600 to-teal-500 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Palette className="w-5 h-5 inline mr-2" />
+            Color Analysis
+          </button>
+          <button
+            onClick={() => setActiveMode('bridal')}
+            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+              activeMode === 'bridal'
+                ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white shadow-lg'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <Star className="w-5 h-5 inline mr-2" />
+            Bridal Studio
+          </button>
+        </div>
+
         {!image ? (
-          <div className="max-w-xl mx-auto">
-            <div className="flex justify-center mb-6">
-              <div className="inline-flex rounded-xl bg-slate-800/30 border border-slate-700/50 p-1 backdrop-blur-sm">
-                <button onClick={() => { setCaptureMode('camera'); stopCamera(); }} className={`px-5 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${captureMode === 'camera' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
-                  <Video className="w-4 h-4" />
-                  Camera
-                </button>
-                <button onClick={() => { setCaptureMode('upload'); stopCamera(); }} className={`px-5 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${captureMode === 'upload' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
-                  <Upload className="w-4 h-4" />
-                  Upload
-                </button>
-              </div>
+          <div className="max-w-2xl mx-auto">
+            {/* Capture Mode Toggle */}
+            <div className="flex justify-center gap-4 mb-6">
+              <button
+                onClick={() => {
+                  setCaptureMode('camera');
+                  if (!isCameraActive) startCamera();
+                }}
+                className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
+                  captureMode === 'camera'
+                    ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                    : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Camera className="w-5 h-5 inline mr-2" />
+                Use Camera
+              </button>
+              <button
+                onClick={() => {
+                  setCaptureMode('upload');
+                  stopCamera();
+                }}
+                className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
+                  captureMode === 'upload'
+                    ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
+                    : 'bg-white text-gray-600 border-2 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Upload className="w-5 h-5 inline mr-2" />
+                Upload Photo
+              </button>
             </div>
+
             {captureMode === 'camera' ? (
-              <div className="card overflow-hidden">
-                {!isCameraActive ? (
-                  <div className="p-12 text-center">
-                    <div className="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500/20 to-teal-500/20 border border-purple-500/30 flex items-center justify-center">
-                      <Camera className="w-12 h-12 text-purple-400" />
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Ready to Take a Selfie?</h3>
-                    <p className="text-slate-400 mb-6">Position your face clearly in the frame</p>
-                    {cameraError && (
-                      <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{cameraError}</div>
-                    )}
-                    <button onClick={startCamera} className="px-8 py-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white text-lg font-bold rounded-xl shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 transition-all flex items-center gap-3 mx-auto">
-                      <Video className="w-6 h-6" />
-                      Start Camera
-                    </button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <video ref={videoRef} autoPlay playsInline muted className={`w-full h-auto max-h-[500px] object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} />
-                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
-                      <div className="flex items-center justify-center gap-4">
+              <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
+                {/* Camera Window */}
+                <div className="relative aspect-[4/5] max-w-md mx-auto bg-gray-100 rounded-xl overflow-hidden">
+                  {isCameraActive ? (
+                    <>
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover"
+                        style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+                      />
+                      
+                      {/* Face Detection Overlay */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        <svg className="w-full h-full">
+                          <ellipse
+                            cx="50%"
+                            cy="40%"
+                            rx="35%"
+                            ry="30%"
+                            fill="none"
+                            stroke={faceDetected ? logoColors.teal : logoColors.purple}
+                            strokeWidth="3"
+                            strokeDasharray="10,5"
+                            className="transition-all duration-300"
+                          />
+                        </svg>
+                      </div>
+
+                      {/* Status Message */}
+                      <div className="absolute top-4 left-0 right-0 flex justify-center">
+                        <div className={`px-4 py-2 rounded-full font-semibold text-sm ${
+                          faceDetected 
+                            ? 'bg-teal-500 text-white' 
+                            : 'bg-purple-500 text-white'
+                        }`}>
+                          {faceDetected ? '✓ Face Detected - Ready!' : 'Position your face in the oval'}
+                        </div>
+                      </div>
+
+                      {/* Countdown */}
+                      {countdown !== null && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                          <div className="text-8xl font-black text-white animate-ping">
+                            {countdown}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Camera Controls */}
+                      <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
                         {hasMultipleCameras && (
-                          <button onClick={switchCamera} className="p-3 bg-white/10 backdrop-blur-sm text-white rounded-full hover:bg-white/20 transition-all">
-                            <SwitchCamera className="w-6 h-6" />
+                          <button
+                            onClick={switchCamera}
+                            className="p-3 bg-white/90 backdrop-blur rounded-full hover:bg-white transition-all shadow-lg"
+                          >
+                            <SwitchCamera className="w-6 h-6 text-gray-700" />
                           </button>
                         )}
-                        <button onClick={capturePhoto} className="p-5 bg-gradient-to-r from-purple-500 to-teal-500 rounded-full shadow-xl shadow-purple-500/30 hover:scale-110 transition-transform">
-                          <Camera className="w-8 h-8 text-white" />
+                        <button
+                          onClick={faceDetected ? startCountdown : undefined}
+                          disabled={!faceDetected || countdown !== null}
+                          className={`px-8 py-3 rounded-full font-bold transition-all shadow-lg ${
+                            faceDetected && countdown === null
+                              ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white hover:scale-105'
+                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          <Camera className="w-5 h-5 inline mr-2" />
+                          Capture Photo
                         </button>
-                        <button onClick={stopCamera} className="p-3 bg-white/10 backdrop-blur-sm text-white rounded-full hover:bg-red-500/50 transition-all">
-                          <X className="w-6 h-6" />
+                        <button
+                          onClick={capturePhoto}
+                          className="p-3 bg-white/90 backdrop-blur rounded-full hover:bg-white transition-all shadow-lg"
+                        >
+                          <span className="text-sm font-medium text-gray-700">Manual</span>
                         </button>
                       </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <button
+                        onClick={startCamera}
+                        className="px-8 py-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-xl"
+                      >
+                        <Camera className="w-6 h-6 inline mr-2" />
+                        Start Camera
+                      </button>
                     </div>
-                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                      <div className="w-64 h-80 border-2 border-purple-500/30 rounded-full" />
-                    </div>
+                  )}
+                </div>
+
+                {cameraError && (
+                  <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    {cameraError}
                   </div>
                 )}
               </div>
             ) : (
-              <div onClick={() => fileInputRef.current?.click()} className="card p-12 text-center cursor-pointer hover:border-purple-500/50 transition-all group border-2 border-dashed border-slate-700">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500/20 to-teal-500/20 border border-purple-500/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Upload className="w-10 h-10 text-purple-400" />
+              <div className="bg-white rounded-2xl border-2 border-dashed border-gray-300 p-12">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <div className="text-center">
+                  <Upload className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Upload Your Photo</h3>
+                  <p className="text-gray-500 mb-6">JPG, PNG or JPEG (max 10MB)</p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-8 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-lg"
+                  >
+                    Choose File
+                  </button>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Upload Your Photo</h3>
-                <p className="text-slate-400 mb-4">Click to select or drag and drop</p>
-                <p className="text-sm text-slate-500">Supports JPG, PNG up to 10MB</p>
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
               </div>
             )}
           </div>
         ) : (
           <div className="grid lg:grid-cols-2 gap-8">
-            <div className="space-y-4">
-              <div className="card p-2 overflow-hidden">
-                <div className="relative rounded-xl overflow-hidden">
-                  <img src={image} alt="Captured" className="w-full h-auto max-h-[500px] object-cover" />
-                  {isAnalyzing && (
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-                      <div className="text-center">
-                        <Loader2 className="w-12 h-12 animate-spin mx-auto mb-3 text-purple-400" />
-                        <p className="font-semibold text-white">Analyzing your features...</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+            {/* Image Preview */}
+            <div className="bg-white rounded-2xl border-2 border-gray-200 p-6">
+              <div className="relative aspect-square max-w-md mx-auto bg-gray-100 rounded-xl overflow-hidden">
+                <img src={image} alt="Captured" className="w-full h-full object-cover" />
+                <button
+                  onClick={resetAnalysis}
+                  className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-lg hover:bg-gray-100 transition-all"
+                >
+                  <X className="w-5 h-5 text-gray-700" />
+                </button>
               </div>
-              <div className="flex gap-3">
-                <button onClick={handleAnalyze} disabled={isAnalyzing} className="flex-1 py-4 px-6 bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+
+              {!analysisResult && !colorResult && (
+                <button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing}
+                  className="w-full mt-6 px-8 py-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-bold hover:scale-105 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {isAnalyzing ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" />Analyzing...</>
+                    <>
+                      <Loader2 className="w-5 h-5 inline mr-2 animate-spin" />
+                      Analyzing...
+                    </>
                   ) : (
-                    <><Sparkles className="w-5 h-5" />Analyze {activeMode === 'hairstyle' ? 'Hairstyle' : 'Color'}</>
+                    <>
+                      <Sparkles className="w-5 h-5 inline mr-2" />
+                      Analyze with AI
+                    </>
                   )}
                 </button>
-                <button onClick={resetAnalysis} className="py-4 px-6 border border-slate-700 text-slate-300 rounded-xl font-semibold hover:bg-slate-800 transition-all flex items-center gap-2">
-                  <Camera className="w-5 h-5" />
-                  Retake
-                </button>
+              )}
+            </div>
+
+            {/* Results */}
+            {(analysisResult || colorResult) && (
+              <div className="space-y-4">
+                {analysisResult && analysisResult.recommendations.map((rec, idx) => (
+                  <div key={idx} className="bg-white rounded-xl border-2 border-gray-200 p-6 hover:border-purple-300 transition-all">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900">{rec.styleName}</h3>
+                        <p className="text-sm text-gray-500">{rec.description}</p>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.score)}`}>
+                        {Math.round(rec.score * 100)}%
+                      </div>
+                    </div>
+                    
+                    {expandedCard === idx && (
+                      <div className="space-y-3 pt-4 border-t border-gray-100">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700 mb-1">Why It Works</p>
+                          <p className="text-sm text-gray-600">{rec.reasoning}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700 mb-1">Styling Tips</p>
+                          <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+                            {rec.stylingTips.map((tip, i) => <li key={i}>{tip}</li>)}
+                          </ul>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-700">Maintenance:</span>
+                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${getMaintenanceColor(rec.maintenance)}`}>
+                            {rec.maintenance}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <button
+                      onClick={() => setExpandedCard(expandedCard === idx ? null : idx)}
+                      className="mt-4 text-purple-600 font-semibold text-sm hover:text-purple-700 transition-colors flex items-center gap-1"
+                    >
+                      {expandedCard === idx ? (
+                        <>Less Details <ChevronUp className="w-4 h-4" /></>
+                      ) : (
+                        <>More Details <ChevronDown className="w-4 h-4" /></>
+                      )}
+                    </button>
+                  </div>
+                ))}
+
+                {colorResult && (
+                  <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
+                    <h3 className="text-xl font-bold text-gray-900 mb-4">Your Color Profile</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700 mb-2">Season</p>
+                        <p className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
+                          {colorResult.season}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700 mb-2">Recommended Colors</p>
+                        <div className="flex flex-wrap gap-2">
+                          {colorResult.recommendedColors.map((color, i) => (
+                            <span key={i} className="px-4 py-2 bg-gradient-to-r from-purple-100 to-teal-100 text-gray-800 rounded-full text-sm font-medium">
+                              {color}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              {error && (
-                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">{error}</div>
-              )}
-              {analysisResult && (
-                <div className="card p-6">
-                  <h3 className="font-bold text-lg text-white mb-4 flex items-center gap-2">
-                    <Star className="w-5 h-5 text-purple-400" />
-                    Your Analysis
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-sm text-slate-400 mb-1">Face Shape</p>
-                      <p className="font-bold text-purple-300">{analysisResult.faceShape}</p>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-sm text-slate-400 mb-1">Hair Type</p>
-                      <p className="font-bold text-purple-300">{analysisResult.hairType}</p>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-sm text-slate-400 mb-1">Hair Texture</p>
-                      <p className="font-bold text-purple-300">{analysisResult.hairTexture}</p>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-sm text-slate-400 mb-1">Confidence</p>
-                      <p className="font-bold text-teal-300">{Math.round(analysisResult.confidenceScore * 100)}%</p>
-                    </div>
-                  </div>
-                  {analysisResult.expertTip && (
-                    <div className="mt-4 p-4 bg-gradient-to-r from-purple-500/10 to-teal-500/10 rounded-xl border border-purple-500/20">
-                      <p className="text-sm font-bold text-purple-300">💡 Expert Tip</p>
-                      <p className="text-slate-300 mt-1 text-sm">{analysisResult.expertTip}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-              {colorResult && (
-                <div className="card p-6">
-                  <h3 className="font-bold text-lg text-white mb-4 flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-teal-400" />
-                    Your Color Profile
-                  </h3>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-sm text-slate-400 mb-1">Skin Tone</p>
-                      <p className="font-bold text-teal-300">{colorResult.skinTone}</p>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-sm text-slate-400 mb-1">Undertone</p>
-                      <p className="font-bold text-teal-300 capitalize">{colorResult.undertone}</p>
-                    </div>
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                      <p className="text-sm text-slate-400 mb-1">Season</p>
-                      <p className="font-bold text-teal-300">{colorResult.season}</p>
-                    </div>
-                  </div>
-                  {colorResult.expertTip && (
-                    <div className="mt-4 p-4 bg-gradient-to-r from-teal-500/10 to-purple-500/10 rounded-xl border border-teal-500/20">
-                      <p className="text-sm font-bold text-teal-300">💡 Expert Tip</p>
-                      <p className="text-slate-300 mt-1 text-sm">{colorResult.expertTip}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="space-y-4">
-              {analysisResult && (
-                <>
-                  <h2 className="text-2xl font-black text-white">Recommended Hairstyles</h2>
-                  {analysisResult.recommendations.map((rec, index) => (
-                    <div key={index} className="card overflow-hidden">
-                      <div onClick={() => setExpandedCard(expandedCard === index ? null : index)} className="p-5 cursor-pointer">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="w-8 h-8 bg-gradient-to-br from-purple-500 to-teal-500 text-white rounded-lg flex items-center justify-center font-black text-sm">{index + 1}</span>
-                              <h3 className="text-lg font-bold text-white">{rec.name}</h3>
-                            </div>
-                            <p className="text-slate-400 text-sm line-clamp-2">{rec.description}</p>
-                          </div>
-                          <div className="flex flex-col items-end gap-2 ml-4">
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.suitabilityScore)}`}>
-                              {Math.round(rec.suitabilityScore * 100)}% Match
-                            </span>
-                            {expandedCard === index ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                          </div>
-                        </div>
-                      </div>
-                      {expandedCard === index && (
-                        <div className="px-5 pb-5 border-t border-slate-700/50 pt-4">
-                          <div className="flex items-center gap-4 mb-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getMaintenanceColor(rec.maintenanceLevel)}`}>
-                              <Clock className="w-3 h-3" />{rec.maintenanceLevel} Maintenance
-                            </span>
-                          </div>
-                          <div className="mb-4">
-                            <h4 className="font-bold text-white mb-2">Styling Tips</h4>
-                            <ul className="space-y-1">
-                              {rec.stylingTips.map((tip, i) => (
-                                <li key={i} className="text-sm text-slate-400 flex items-start gap-2">
-                                  <span className="text-purple-400 mt-1">•</span>{tip}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-white mb-2">Best For</h4>
-                            <div className="flex flex-wrap gap-2">
-                              {rec.bestFor.map((item, i) => (
-                                <span key={i} className="px-3 py-1 bg-slate-800 text-slate-300 rounded-full text-xs border border-slate-700 font-medium">{item}</span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-              {colorResult && (
-                <>
-                  <h2 className="text-2xl font-black text-white">Recommended Hair Colors</h2>
-                  {colorResult.recommendations.map((rec, index) => (
-                    <div key={index} className="card overflow-hidden">
-                      <div onClick={() => setExpandedCard(expandedCard === index ? null : index)} className="p-5 cursor-pointer">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-4 flex-1">
-                            <div className="w-14 h-14 rounded-xl shadow-lg border-2 border-slate-600" style={{ backgroundColor: rec.hexCode }} />
-                            <div>
-                              <h3 className="text-lg font-bold text-white">{rec.colorName}</h3>
-                              <p className="text-sm text-slate-400">{rec.hexCode}</p>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-2 ml-4">
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.suitabilityScore)}`}>
-                              {Math.round(rec.suitabilityScore * 100)}% Match
-                            </span>
-                            {expandedCard === index ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                          </div>
-                        </div>
-                      </div>
-                      {expandedCard === index && (
-                        <div className="px-5 pb-5 border-t border-slate-700/50 pt-4">
-                          <p className="text-slate-400 mb-4">{rec.description}</p>
-                          <div className="flex items-center gap-4 mb-4">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getMaintenanceColor(rec.maintenanceLevel)}`}>
-                              <Clock className="w-3 h-3" />{rec.maintenanceLevel} Maintenance
-                            </span>
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-white mb-2">Benefits</h4>
-                            <div className="flex flex-wrap gap-2">
-                              {rec.bestFor.map((item, i) => (
-                                <span key={i} className="px-3 py-1 bg-slate-800 text-slate-300 rounded-full text-xs border border-slate-700 font-medium">{item}</span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-              {!analysisResult && !colorResult && !isAnalyzing && (
-                <div className="card p-8 text-center border-2 border-dashed border-slate-700">
-                  <Sparkles className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-                  <p className="text-slate-400">Click &quot;Analyze&quot; to get your personalized {activeMode === 'hairstyle' ? 'hairstyle' : 'color'} recommendations</p>
-                </div>
-              )}
-            </div>
+            )}
+
+            {error && (
+              <div className="lg:col-span-2 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                {error}
+              </div>
+            )}
           </div>
         )}
-        <footer className="mt-16 text-center">
-          <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
-            <span>StyleVision AI</span>
-            <span>•</span>
-            <span>Powered by Google Gemini 2.0 Flash</span>
-          </div>
-        </footer>
       </div>
+
+      <canvas ref={canvasRef} className="hidden" />
     </main>
   );
 }
