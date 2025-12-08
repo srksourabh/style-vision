@@ -91,7 +91,9 @@ export default function StyleVision() {
         const dy = (y - centerY) / radiusY;
         if (dx * dx + dy * dy <= 1) {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
-          const [r, g, b] = pixel;
+          const r = pixel[0];
+          const g = pixel[1];
+          const b = pixel[2];
           if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) {
             skinPixels++;
           }
