@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const REPLICATE_API_KEY = process.env.REPLICATE_API_TOKEN;
 
-// Gemini text model for analysis (works without special permissions)
-const GEMINI_ANALYSIS_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// Gemini models
+const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
+const GEMINI_IMAGE_MODEL = 'gemini-2.0-flash-exp'; // Image generation model
 
 interface HairstyleAnalysis {
   face_analysis: {
@@ -22,7 +22,61 @@ interface HairstyleAnalysis {
   }>;
 }
 
-// Step 1: Use Gemini to analyze face and generate optimized prompts
+// Utility: Sleep function
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Utility: Retry with exponential backoff for server errors (500, 502, 503)
+async function fetchWithRetry(
+  url: string, 
+  options: RequestInit, 
+  maxRetries: number = 3
+): Promise<Response> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      console.log(`API attempt ${attempt + 1}/${maxRetries}...`);
+      const response = await fetch(url, options);
+      
+      // Server-side errors (500, 502, 503) - retry with backoff
+      if (response.status >= 500 && response.status < 600) {
+        const errorText = await response.text();
+        console.error(`Server error ${response.status}:`, errorText);
+        
+        if (attempt < maxRetries - 1) {
+          const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s...
+          console.log(`Waiting ${waitTime/1000}s before retry...`);
+          await sleep(waitTime);
+          continue;
+        }
+        throw new Error(`Server error ${response.status} after ${maxRetries} attempts`);
+      }
+      
+      // Client-side errors (400, 401, 403) - don't retry
+      if (response.status >= 400 && response.status < 500) {
+        const errorText = await response.text();
+        console.error(`Client error ${response.status} (not retrying):`, errorText);
+        throw new Error(`Client error ${response.status}: ${errorText}`);
+      }
+      
+      return response;
+      
+    } catch (error) {
+      // Network errors - retry
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error(`Network error on attempt ${attempt + 1}:`, error);
+        if (attempt < maxRetries - 1) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.log(`Waiting ${waitTime/1000}s before retry...`);
+          await sleep(waitTime);
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+  throw new Error('Max retries reached');
+}
+
+// Step 1: Analyze face and generate personalized prompts using Gemini text model
 async function analyzeAndGeneratePrompts(userPhotoBase64: string): Promise<HairstyleAnalysis | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   
@@ -59,7 +113,7 @@ Provide the response **ONLY** as a valid **JSON object**. Do not add markdown fo
       "style_name": "Name of Hairstyle",
       "geometry_match_reasoning": "2-3 sentences explaining why this style suits the face shape based on geometry.",
       "image_generation_prompts": {
-        "front_view": "Transform the person's hair to a [Style Name] hairstyle. Keep exact same face, skin, and features. Only change the hair to: [detailed hair description including length, texture, styling, and how it frames the face].",
+        "front_view": "Transform this person's hair to a [Style Name] hairstyle. Keep exact same face, skin tone, and facial features unchanged. Only modify the hair to: [detailed hair description including length, texture, styling, and how it frames the face]. Photorealistic, professional studio lighting.",
         "back_view": "Description of how the back/neckline should look for this style."
       }
     }
@@ -70,32 +124,31 @@ Provide the response **ONLY** as a valid **JSON object**. Do not add markdown fo
 Analyze this person's face and generate 6 personalized hairstyle recommendations.`;
 
   try {
-    const response = await fetch(`${GEMINI_ANALYSIS_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: metaPrompt },
-            {
-              inline_data: {
-                mime_type: "image/jpeg",
-                data: base64Data
+    const response = await fetchWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TEXT_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: metaPrompt },
+              {
+                inline_data: {
+                  mime_type: "image/jpeg",
+                  data: base64Data
+                }
               }
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 8192,
-        }
-      })
-    });
-
-    if (!response.ok) {
-      console.error('Gemini analysis error:', await response.text());
-      return null;
-    }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 8192,
+          }
+        })
+      },
+      3 // max retries
+    );
 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -108,7 +161,7 @@ Analyze this person's face and generate 6 personalized hairstyle recommendations
     // Parse JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error('No JSON found in response:', text);
+      console.error('No JSON found in response:', text.substring(0, 500));
       return null;
     }
 
@@ -122,82 +175,81 @@ Analyze this person's face and generate 6 personalized hairstyle recommendations
   }
 }
 
-// Step 2: Generate image with Replicate using the optimized prompt
-async function generateWithReplicate(userPhotoBase64: string, prompt: string): Promise<string | null> {
-  if (!REPLICATE_API_KEY) {
-    console.error('REPLICATE_API_TOKEN not configured');
-    return null;
-  }
-
+// Step 2: Generate hairstyle image using Gemini image generation
+async function generateHairstyleWithGemini(
+  userPhotoBase64: string, 
+  prompt: string,
+  styleIndex: number
+): Promise<string | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
-  const dataUrl = `data:image/jpeg;base64,${base64Data}`;
   
   try {
-    // Use InstructPix2Pix for image editing (preserves face)
-    const response = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${REPLICATE_API_KEY}`,
-        'Content-Type': 'application/json',
+    console.log(`Generating style ${styleIndex} with Gemini image model...`);
+    
+    const response = await fetchWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [
+              {
+                inline_data: {
+                  mime_type: "image/jpeg",
+                  data: base64Data
+                }
+              },
+              {
+                text: prompt
+              }
+            ]
+          }],
+          generationConfig: {
+            responseModalities: ["TEXT", "IMAGE"],
+            temperature: 1.0
+          }
+        })
       },
-      body: JSON.stringify({
-        version: "30c1d0b916a6f8efce20493f5d61ee27491ab2a60437c13c588468b9810ec23f",
-        input: {
-          image: dataUrl,
-          prompt: prompt,
-          num_inference_steps: 50,
-          guidance_scale: 7.5,
-          image_guidance_scale: 1.5
+      3 // max retries
+    );
+
+    const data = await response.json();
+    console.log(`Style ${styleIndex} response received`);
+    
+    // Extract image from response
+    if (data.candidates?.[0]?.content?.parts) {
+      for (const part of data.candidates[0].content.parts) {
+        if (part.inlineData?.data) {
+          console.log(`Style ${styleIndex} - Image generated successfully`);
+          return `data:image/png;base64,${part.inlineData.data}`;
         }
-      })
-    });
-
-    if (!response.ok) {
-      console.error('Replicate API error:', await response.text());
-      return null;
-    }
-
-    const prediction = await response.json();
-    console.log('Replicate prediction started:', prediction.id);
-    
-    // Poll for result
-    let result = prediction;
-    let attempts = 0;
-    const maxAttempts = 60;
-    
-    while (result.status !== 'succeeded' && result.status !== 'failed' && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const statusResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
-        headers: { 'Authorization': `Token ${REPLICATE_API_KEY}` }
-      });
-      
-      result = await statusResponse.json();
-      attempts++;
+      }
     }
     
-    if (result.status === 'succeeded' && result.output) {
-      const outputUrl = Array.isArray(result.output) ? result.output[0] : result.output;
-      return outputUrl;
+    // Check for error in response
+    if (data.error) {
+      console.error(`Style ${styleIndex} API error:`, data.error);
     }
     
-    console.error('Replicate generation failed:', result.error);
+    console.error(`Style ${styleIndex} - No image in response`);
     return null;
     
   } catch (error) {
-    console.error('Replicate error:', error);
+    console.error(`Style ${styleIndex} generation error:`, error);
     return null;
   }
 }
 
 // Fallback prompts if Gemini analysis fails
 const FALLBACK_STYLES = [
-  { name: "Classic Side Part", prompt: "change the hairstyle to a classic side part with hair neatly combed to one side with a clean defined part line" },
-  { name: "Textured Crop", prompt: "change the hairstyle to a modern textured crop with short faded sides and textured messy top" },
-  { name: "Slicked Back", prompt: "change the hairstyle to slicked back hair combed straight back with gel for a sophisticated look" },
-  { name: "Undercut", prompt: "change the hairstyle to an undercut with very short buzzed sides and longer styled hair on top" },
-  { name: "Crew Cut", prompt: "change the hairstyle to a crew cut military style with hair short all around" },
-  { name: "Spiky Textured", prompt: "change the hairstyle to spiky textured hair styled upward in spikes" }
+  { name: "Classic Side Part", prompt: "Transform this person's hair to a classic side part hairstyle. Keep the exact same face unchanged. Hair should be neatly combed to one side with a clean defined part line. Professional, photorealistic." },
+  { name: "Textured Crop", prompt: "Transform this person's hair to a modern textured crop hairstyle. Keep the exact same face unchanged. Short faded sides with textured messy top. Professional, photorealistic." },
+  { name: "Slicked Back", prompt: "Transform this person's hair to a slicked back hairstyle. Keep the exact same face unchanged. Hair combed straight back with gel for a sophisticated look. Professional, photorealistic." },
+  { name: "Undercut", prompt: "Transform this person's hair to an undercut hairstyle. Keep the exact same face unchanged. Very short buzzed sides with longer styled hair on top. Professional, photorealistic." },
+  { name: "Crew Cut", prompt: "Transform this person's hair to a crew cut hairstyle. Keep the exact same face unchanged. Short military style with hair short all around. Professional, photorealistic." },
+  { name: "Spiky Textured", prompt: "Transform this person's hair to a spiky textured hairstyle. Keep the exact same face unchanged. Hair styled upward in spikes with texture. Professional, photorealistic." }
 ];
 
 export async function POST(request: NextRequest) {
@@ -209,18 +261,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No photo provided' }, { status: 400 });
     }
 
-    // Check for required API keys
     if (!GEMINI_API_KEY) {
       return NextResponse.json({ 
         success: false, 
         error: 'GEMINI_API_KEY not configured' 
-      }, { status: 500 });
-    }
-
-    if (!REPLICATE_API_KEY) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'REPLICATE_API_TOKEN not configured. Add it to Vercel environment variables.' 
       }, { status: 500 });
     }
 
@@ -247,14 +291,14 @@ export async function POST(request: NextRequest) {
     const indicesToGenerate = styleIndex !== undefined ? [styleIndex] : [0, 1, 2, 3, 4, 5];
     const results = [];
 
-    // Step 2: Generate images with Replicate
-    console.log(`Step 2: Generating ${indicesToGenerate.length} hairstyles with Replicate...`);
+    // Step 2: Generate images with Gemini
+    console.log(`Step 2: Generating ${indicesToGenerate.length} hairstyles with Gemini...`);
     
     for (const idx of indicesToGenerate) {
       const style = stylesToGenerate[idx] || FALLBACK_STYLES[idx];
       console.log(`Generating style ${idx}: ${style.name}`);
       
-      const imageUrl = await generateWithReplicate(userPhoto, style.prompt);
+      const imageUrl = await generateHairstyleWithGemini(userPhoto, style.prompt, idx);
       
       results.push({
         styleIndex: idx,
@@ -263,6 +307,11 @@ export async function POST(request: NextRequest) {
         reasoning: analysis?.hairstyles?.[idx]?.geometry_match_reasoning || null,
         error: imageUrl ? null : 'Generation failed'
       });
+      
+      // Small delay between requests to avoid rate limiting
+      if (indicesToGenerate.length > 1 && idx !== indicesToGenerate[indicesToGenerate.length - 1]) {
+        await sleep(500);
+      }
     }
 
     const successCount = results.filter(r => r.image).length;
