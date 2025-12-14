@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, ChevronUp, RotateCw, X } from 'lucide-react';
+import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, ChevronUp, X, AlertCircle } from 'lucide-react';
 import { analyzeWithGemini, analyzeColorWithGemini, HairstyleRecommendation, ColorRecommendation } from '@/utils/geminiService';
 
 // Logo colors from the actual StyleVision logo
@@ -23,17 +23,53 @@ const logoColors = {
   }
 };
 
-// Mock hairstyle images
-const getHairstyleImages = (styleName: string) => {
-  const baseImages = [
-    '/sample-styles/style-front.jpg',
-    '/sample-styles/style-side.jpg',
-    '/sample-styles/style-back.jpg',
-    '/sample-styles/style-angle1.jpg',
-    '/sample-styles/style-angle2.jpg',
-    '/sample-styles/style-detail.jpg',
-  ];
-  return baseImages;
+// Real hairstyle images from Unsplash (free to use)
+const hairstyleImageDatabase: Record<string, string[]> = {
+  'Layered Lob': [
+    'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1595959183082-7b570b7e1dfa?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1519699047748-de8e457a634e?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1554519515-242161756769?w=400&h=400&fit=crop&crop=face',
+  ],
+  'Textured Pixie': [
+    'https://images.unsplash.com/photo-1500917293891-ef795e70e1f6?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1552058544-f2b08422138a?w=400&h=400&fit=crop&crop=face',
+  ],
+  'Classic Bob': [
+    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1509967419530-da38b4704bc6?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1496440737103-cd596325d314?w=400&h=400&fit=crop&crop=face',
+  ],
+  'default': [
+    'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1595959183082-7b570b7e1dfa?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=400&fit=crop&crop=face',
+    'https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?w=400&h=400&fit=crop&crop=face',
+  ]
+};
+
+// Get hairstyle images based on style name
+const getHairstyleImages = (styleName: string): string[] => {
+  // Check if we have specific images for this style
+  for (const [key, images] of Object.entries(hairstyleImageDatabase)) {
+    if (styleName.toLowerCase().includes(key.toLowerCase()) || 
+        key.toLowerCase().includes(styleName.toLowerCase())) {
+      return images;
+    }
+  }
+  // Return default images
+  return hairstyleImageDatabase['default'];
 };
 
 export default function StyleVision() {
@@ -51,6 +87,7 @@ export default function StyleVision() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isUsingFallback, setIsUsingFallback] = useState(false);
   
   // Image viewer state
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -159,7 +196,7 @@ export default function StyleVision() {
   }, [facingMode]);
 
   const stopCamera = useCallback(() => {
-    console.log('🛑 Stopping camera...');
+    console.log('Stopping camera...');
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
       detectionIntervalRef.current = null;
@@ -167,7 +204,6 @@ export default function StyleVision() {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
         track.stop();
-        console.log('Track stopped:', track.kind);
       });
       streamRef.current = null;
     }
@@ -181,15 +217,14 @@ export default function StyleVision() {
 
   const initializeCamera = useCallback(async () => {
     if (!videoRef.current) {
-      console.log('⏳ Video ref not ready yet');
+      console.log('Video ref not ready yet');
       return;
     }
 
-    console.log('📹 Initializing camera stream...');
+    console.log('Initializing camera stream...');
     setCameraError(null);
 
     try {
-      // Stop any existing stream first
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
@@ -203,22 +238,17 @@ export default function StyleVision() {
         audio: false
       };
 
-      console.log('📷 Requesting camera with constraints:', constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('✅ Got media stream:', stream.id);
-      
       streamRef.current = stream;
       
       const video = videoRef.current;
       if (!video) {
-        console.error('❌ Video element disappeared');
+        console.error('Video element disappeared');
         return;
       }
 
       video.srcObject = stream;
-      console.log('📺 Set srcObject on video element');
 
-      // Wait for video metadata to load
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error('Video metadata load timeout'));
@@ -226,7 +256,6 @@ export default function StyleVision() {
 
         video.onloadedmetadata = () => {
           clearTimeout(timeout);
-          console.log('📐 Video metadata loaded:', video.videoWidth, 'x', video.videoHeight);
           resolve();
         };
 
@@ -236,21 +265,16 @@ export default function StyleVision() {
         };
       });
 
-      // Play the video
       await video.play();
-      console.log('▶️ Video is now playing');
-
       setIsCameraReady(true);
       
-      // Start face detection
       setTimeout(() => {
         startFaceDetection();
-        console.log('👤 Face detection started');
       }, 500);
 
     } catch (err: unknown) {
       const error = err as { name?: string; message?: string };
-      console.error('❌ Camera initialization error:', err);
+      console.error('Camera initialization error:', err);
       
       if (error.name === 'NotAllowedError') {
         setCameraError('Camera access denied. Please allow camera permissions in your browser settings and refresh the page.');
@@ -266,7 +290,6 @@ export default function StyleVision() {
     }
   }, [facingMode, startFaceDetection]);
 
-  // Effect to initialize camera when isCameraActive becomes true
   useEffect(() => {
     if (isCameraActive && !isCameraReady && videoRef.current) {
       initializeCamera();
@@ -274,29 +297,22 @@ export default function StyleVision() {
   }, [isCameraActive, isCameraReady, initializeCamera]);
 
   const startCamera = () => {
-    console.log('🎥 Start camera clicked');
     setCameraError(null);
     setIsCameraActive(true);
-    // Camera initialization will happen in the useEffect above
-    // after the video element is rendered
   };
 
   const switchCamera = () => {
     const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
-    console.log('🔄 Switching camera to:', newFacingMode);
     setFacingMode(newFacingMode);
     if (isCameraActive) {
       setIsCameraReady(false);
-      // Stop current stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
-      // Re-initialize will happen via useEffect
     }
   };
 
-  // Re-initialize camera when facingMode changes
   useEffect(() => {
     if (isCameraActive && !isCameraReady && !streamRef.current) {
       const timer = setTimeout(() => {
@@ -316,6 +332,7 @@ export default function StyleVision() {
     setColorResults(null);
     setError(null);
     setCountdown(null);
+    setIsUsingFallback(false);
     setIsCameraActive(true);
     setIsCameraReady(false);
   };
@@ -325,14 +342,22 @@ export default function StyleVision() {
     
     setIsAnalyzing(true);
     setError(null);
+    setIsUsingFallback(false);
     
     try {
       if (analysisMode === 'hair' || analysisMode === 'bridal') {
         const result = await analyzeWithGemini(capturedPhoto);
         setHairResults(result.recommendations);
+        // Check if using fallback (API not configured)
+        if (result.recommendations[0]?.name === 'Layered Lob') {
+          setIsUsingFallback(true);
+        }
       } else if (analysisMode === 'color') {
         const result = await analyzeColorWithGemini(capturedPhoto);
         setColorResults(result.recommendations);
+        if (result.recommendations[0]?.colorName === 'Warm Honey Blonde') {
+          setIsUsingFallback(true);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed. Please try again.');
@@ -348,7 +373,7 @@ export default function StyleVision() {
     setHairResults(null);
     setColorResults(null);
     setError(null);
-    // Don't start camera immediately - let user click the button
+    setIsUsingFallback(false);
   };
 
   const goBack = () => {
@@ -359,6 +384,7 @@ export default function StyleVision() {
     setHairResults(null);
     setColorResults(null);
     setError(null);
+    setIsUsingFallback(false);
   };
 
   const openImageViewer = (images: string[], styleTitle: string, startIndex: number = 0) => {
@@ -382,7 +408,6 @@ export default function StyleVision() {
     setCurrentImageIndex((prev) => (prev - 1 + viewerImages.length) % viewerImages.length);
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopCamera();
@@ -534,11 +559,9 @@ export default function StyleVision() {
                     )}
                   </div>
 
-                  {/* Camera Window - Always render video element when active */}
                   <div className="relative w-full max-w-md mx-auto aspect-[4/5] bg-gray-900 rounded-xl overflow-hidden">
                     {isCameraActive ? (
                       <>
-                        {/* Video element - always rendered when camera is active */}
                         <video
                           ref={videoRef}
                           autoPlay
@@ -548,7 +571,6 @@ export default function StyleVision() {
                           style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
                         />
                         
-                        {/* Loading overlay */}
                         {!isCameraReady && (
                           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900">
                             <RefreshCw className="w-12 h-12 text-purple-500 animate-spin mb-4" />
@@ -556,7 +578,6 @@ export default function StyleVision() {
                           </div>
                         )}
 
-                        {/* Face Detection Overlay - only show when camera is ready */}
                         {isCameraReady && (
                           <>
                             <div className="absolute inset-0 pointer-events-none">
@@ -607,7 +628,6 @@ export default function StyleVision() {
                     )}
                   </div>
 
-                  {/* Manual Capture Button */}
                   {isCameraReady && (
                     <div className="flex justify-center mt-6">
                       <button
@@ -662,9 +682,23 @@ export default function StyleVision() {
 
           {/* Results Section */}
           <div>
+            {isUsingFallback && (hairResults || colorResults) && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-amber-800 font-semibold text-sm">Demo Mode</p>
+                  <p className="text-amber-700 text-sm">
+                    Showing sample recommendations. For personalized AI analysis, please configure your Gemini API key in Vercel environment variables.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {(hairResults || colorResults) && (
               <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900">Your Personalized Recommendations</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {isUsingFallback ? 'Sample Recommendations' : 'Your Personalized Recommendations'}
+                </h2>
 
                 {hairResults?.map((rec, idx) => {
                   const styleImages = getHairstyleImages(rec.name);
@@ -690,14 +724,14 @@ export default function StyleVision() {
                           >
                             <img
                               src={imgSrc}
-                              alt={`${rec.name} angle ${imgIdx + 1}`}
+                              alt={`${rec.name} style ${imgIdx + 1}`}
                               className="w-full h-full object-cover"
-                              onError={(e) => {
-                                e.currentTarget.src = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect fill='%23f3f4f6' width='200' height='200'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='14' fill='%239ca3af' text-anchor='middle' dy='.3em'%3EStyle ${imgIdx + 1}%3C/text%3E%3C/svg%3E`;
-                              }}
+                              loading="lazy"
                             />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                              <RotateCw className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs font-semibold">
+                                View
+                              </span>
                             </div>
                             {imgIdx === 0 && (
                               <div className="absolute top-1 left-1 px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-semibold">
@@ -798,10 +832,7 @@ export default function StyleVision() {
               <img
                 src={viewerImages[currentImageIndex]}
                 alt={`${selectedStyle} view ${currentImageIndex + 1}`}
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  e.currentTarget.src = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='800'%3E%3Crect fill='%23111827' width='800' height='800'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='24' fill='%236b7280' text-anchor='middle' dy='.3em'%3EStyle ${currentImageIndex + 1}%3C/text%3E%3C/svg%3E`;
-                }}
+                className="w-full h-full object-cover"
               />
               
               <button
@@ -831,16 +862,13 @@ export default function StyleVision() {
                     src={img}
                     alt={`Thumbnail ${idx + 1}`}
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect fill='%23374151' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='12' fill='%239ca3af' text-anchor='middle' dy='.3em'%3E${idx + 1}%3C/text%3E%3C/svg%3E`;
-                    }}
                   />
                 </button>
               ))}
             </div>
 
             <p className="text-white/60 text-center mt-4 text-sm">
-              {currentImageIndex + 1} of {viewerImages.length} • Click arrows or thumbnails to rotate views
+              {currentImageIndex + 1} of {viewerImages.length} - Click arrows or thumbnails to browse
             </p>
           </div>
         </div>
