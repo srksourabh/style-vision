@@ -4,26 +4,38 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Gemini models
 const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
-const GEMINI_IMAGE_MODEL = 'gemini-2.0-flash-exp'; // Image generation model
+const GEMINI_IMAGE_MODEL = 'gemini-2.0-flash-exp';
 
 interface HairstyleAnalysis {
-  face_analysis: {
-    shape: string;
-    key_features: string;
-  };
+  face_shape: string;
+  reasoning: string;
   hairstyles: Array<{
     id: number;
-    style_name: string;
-    geometry_match_reasoning: string;
-    image_generation_prompts: {
-      front_view: string;
-      back_view: string;
+    name: string;
+    description: string;
+    prompts: {
+      front: string;
+      back: string;
     };
   }>;
 }
 
 // Utility: Sleep function
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Utility: Clean JSON response - remove markdown code blocks
+function cleanJsonResponse(text: string): string {
+  // Remove ```json and ``` markdown fences
+  let cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+  
+  // Try to extract JSON object if there's surrounding text
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleaned = jsonMatch[0];
+  }
+  
+  return cleaned;
+}
 
 // Utility: Retry with exponential backoff for server errors (500, 502, 503)
 async function fetchWithRetry(
@@ -39,7 +51,7 @@ async function fetchWithRetry(
       // Server-side errors (500, 502, 503) - retry with backoff
       if (response.status >= 500 && response.status < 600) {
         const errorText = await response.text();
-        console.error(`Server error ${response.status}:`, errorText);
+        console.error(`Server error ${response.status}:`, errorText.substring(0, 200));
         
         if (attempt < maxRetries - 1) {
           const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s...
@@ -53,8 +65,8 @@ async function fetchWithRetry(
       // Client-side errors (400, 401, 403) - don't retry
       if (response.status >= 400 && response.status < 500) {
         const errorText = await response.text();
-        console.error(`Client error ${response.status} (not retrying):`, errorText);
-        throw new Error(`Client error ${response.status}: ${errorText}`);
+        console.error(`Client error ${response.status} (not retrying):`, errorText.substring(0, 200));
+        throw new Error(`Client error ${response.status}: ${errorText.substring(0, 100)}`);
       }
       
       return response;
@@ -76,52 +88,47 @@ async function fetchWithRetry(
   throw new Error('Max retries reached');
 }
 
-// Step 1: Analyze face and generate personalized prompts using Gemini text model
+// Step 1: Analyze face with bulletproof prompt
 async function analyzeAndGeneratePrompts(userPhotoBase64: string): Promise<HairstyleAnalysis | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   
-  const metaPrompt = `### CONTEXT ###
-You are the world's leading **Face Morphologist and Expert Hair Stylist**. You possess a deep understanding of facial geometry, the Golden Ratio, and hair physics. You are assisting a software application that creates virtual makeovers.
+  // BULLETPROOF PROMPT - strict JSON output, no markdown
+  const bulletproofPrompt = `### CONTEXT ###
+You are the world's leading **Face Morphologist and Virtual Stylist**. You are a backend processor for a software application. Your output is read directly by code, so strict formatting is required.
 
 ### OBJECTIVE ###
-Your task is to analyze the user's uploaded photo and generate a structured styling plan consisting of **six (6) distinct, modern hairstyles** that perfectly complement their specific face shape.
+Analyze the attached user photo and generate a JSON object containing **six (6) distinct hairstyle recommendations** optimized for their facial geometry.
 
-### PRE-COMPUTATION REASONING ###
-1. **Analyze Face Shape:** Identify if the face is Oval, Round, Square, Diamond, Heart, or Oblong based on jawline, forehead width, and cheekbone prominence.
-2. **Determine Constraints:** Focus strictly on aesthetic and geometric analysis. Do not comment on unrelated physical traits.
-3. **Select Styles:** Choose 6 diverse styles (e.g., Short Textured, Medium Layered, Long Flowing, Buzz Cut, etc.) that balance the identified face shape.
-4. **Draft Explanations:** Formulate a logic for *why* the style works (e.g., "Adds volume on top to elongate a round face").
-5. **Visualize Views:** Create detailed visual prompts for generating the hairstyle on this specific person.
+### CRITICAL INSTRUCTIONS ###
+1. **Analyze** the face shape (Oval, Round, Square, Diamond, Heart, Oblong) based on landmarks.
+2. **Select** 6 modern, distinct hairstyles that complement the face shape.
+3. **Generate** image generation prompts for "Front View" for each style.
+4. **Avoid** sensitive terms. Keep descriptions clinical and geometric (e.g., "features a high fade") rather than biological or anatomical to ensure safety compliance.
 
-### STYLE & TONE ###
-- **Style:** Analytical, Fashion-Forward, Descriptive.
-- **Tone:** Professional, Encouraging, Objective.
-- **Safety Constraint:** Maintain a strictly clinical and aesthetic tone. Focus on hair styling only.
+### OUTPUT FORMAT (STRICT) ###
+- Output **ONLY** raw JSON.
+- **DO NOT** use Markdown code blocks (no \`\`\`json or \`\`\`).
+- **DO NOT** include any conversational text before or after the JSON.
 
-### OUTPUT FORMAT ###
-Provide the response **ONLY** as a valid **JSON object**. Do not add markdown formatting (like \`\`\`json) or conversational text outside the JSON.
-
-**JSON Structure:**
+**JSON Schema:**
 {
-  "face_analysis": {
-    "shape": "Identified Shape",
-    "key_features": "Brief description of jawline/forehead geometry"
-  },
+  "face_shape": "String",
+  "reasoning": "String explaining why these styles suit this face shape",
   "hairstyles": [
     {
       "id": 1,
-      "style_name": "Name of Hairstyle",
-      "geometry_match_reasoning": "2-3 sentences explaining why this style suits the face shape based on geometry.",
-      "image_generation_prompts": {
-        "front_view": "Transform this person's hair to a [Style Name] hairstyle. Keep exact same face, skin tone, and facial features unchanged. Only modify the hair to: [detailed hair description including length, texture, styling, and how it frames the face]. Photorealistic, professional studio lighting.",
-        "back_view": "Description of how the back/neckline should look for this style."
+      "name": "Hairstyle Name",
+      "description": "Brief description of the style",
+      "prompts": {
+        "front": "Transform the hair to [style]. Maintain exact facial features unchanged. Professional studio lighting, photorealistic.",
+        "back": "Back view description of the hairstyle"
       }
     }
   ]
 }
 
 ### INPUT ###
-Analyze this person's face and generate 6 personalized hairstyle recommendations.`;
+Analyze this photo and provide 6 hairstyle recommendations.`;
 
   try {
     const response = await fetchWithRetry(
@@ -132,7 +139,7 @@ Analyze this person's face and generate 6 personalized hairstyle recommendations
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: metaPrompt },
+              { text: bulletproofPrompt },
               {
                 inline_data: {
                   mime_type: "image/jpeg",
@@ -144,29 +151,52 @@ Analyze this person's face and generate 6 personalized hairstyle recommendations
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 8192,
-          }
+          },
+          safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+          ]
         })
       },
-      3 // max retries
+      3
     );
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    // CHECK 1: Safety filter block
+    if (data.promptFeedback?.blockReason) {
+      console.error(`Gemini blocked request: ${data.promptFeedback.blockReason}`);
+      return null;
+    }
+    
+    // CHECK 2: No candidates returned
+    if (!data.candidates || data.candidates.length === 0) {
+      console.error('No candidates in Gemini response');
+      return null;
+    }
+    
+    // CHECK 3: Candidate was blocked
+    if (data.candidates[0].finishReason === 'SAFETY') {
+      console.error('Response blocked by safety filter');
+      return null;
+    }
+    
+    const text = data.candidates[0]?.content?.parts?.[0]?.text;
     
     if (!text) {
       console.error('No text in Gemini response');
       return null;
     }
 
-    // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('No JSON found in response:', text.substring(0, 500));
-      return null;
-    }
+    // CLEAN THE JSON: Remove markdown code blocks
+    const cleanedText = cleanJsonResponse(text);
+    console.log('Cleaned JSON (first 200 chars):', cleanedText.substring(0, 200));
 
-    const analysis = JSON.parse(jsonMatch[0]) as HairstyleAnalysis;
-    console.log('Face analysis complete:', analysis.face_analysis);
+    // Parse safely
+    const analysis = JSON.parse(cleanedText) as HairstyleAnalysis;
+    console.log('Face analysis complete:', analysis.face_shape);
     return analysis;
 
   } catch (error) {
@@ -209,28 +239,45 @@ async function generateHairstyleWithGemini(
           generationConfig: {
             responseModalities: ["TEXT", "IMAGE"],
             temperature: 1.0
-          }
+          },
+          safetySettings: [
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_MEDIUM_AND_ABOVE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+          ]
         })
       },
-      3 // max retries
+      3
     );
 
     const data = await response.json();
-    console.log(`Style ${styleIndex} response received`);
+    
+    // CHECK: Safety filter block
+    if (data.promptFeedback?.blockReason) {
+      console.error(`Style ${styleIndex} blocked: ${data.promptFeedback.blockReason}`);
+      return null;
+    }
+    
+    // CHECK: No candidates or safety blocked
+    if (!data.candidates || data.candidates.length === 0) {
+      console.error(`Style ${styleIndex} - No candidates returned`);
+      return null;
+    }
+    
+    if (data.candidates[0].finishReason === 'SAFETY') {
+      console.error(`Style ${styleIndex} - Blocked by safety filter`);
+      return null;
+    }
     
     // Extract image from response
-    if (data.candidates?.[0]?.content?.parts) {
+    if (data.candidates[0]?.content?.parts) {
       for (const part of data.candidates[0].content.parts) {
         if (part.inlineData?.data) {
           console.log(`Style ${styleIndex} - Image generated successfully`);
           return `data:image/png;base64,${part.inlineData.data}`;
         }
       }
-    }
-    
-    // Check for error in response
-    if (data.error) {
-      console.error(`Style ${styleIndex} API error:`, data.error);
     }
     
     console.error(`Style ${styleIndex} - No image in response`);
@@ -244,7 +291,7 @@ async function generateHairstyleWithGemini(
 
 // Fallback prompts if Gemini analysis fails
 const FALLBACK_STYLES = [
-  { name: "Classic Side Part", prompt: "Transform this person's hair to a classic side part hairstyle. Keep the exact same face unchanged. Hair should be neatly combed to one side with a clean defined part line. Professional, photorealistic." },
+  { name: "Classic Side Part", prompt: "Transform this person's hair to a classic side part hairstyle. Keep the exact same face unchanged. Hair neatly combed to one side with a clean defined part line. Professional, photorealistic." },
   { name: "Textured Crop", prompt: "Transform this person's hair to a modern textured crop hairstyle. Keep the exact same face unchanged. Short faded sides with textured messy top. Professional, photorealistic." },
   { name: "Slicked Back", prompt: "Transform this person's hair to a slicked back hairstyle. Keep the exact same face unchanged. Hair combed straight back with gel for a sophisticated look. Professional, photorealistic." },
   { name: "Undercut", prompt: "Transform this person's hair to an undercut hairstyle. Keep the exact same face unchanged. Very short buzzed sides with longer styled hair on top. Professional, photorealistic." },
@@ -269,7 +316,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Analyze face and get personalized prompts from Gemini
-    console.log('Step 1: Analyzing face with Gemini...');
+    console.log('Step 1: Analyzing face with Gemini (bulletproof prompt)...');
     const analysis = await analyzeAndGeneratePrompts(userPhoto);
     
     let stylesToGenerate: Array<{ name: string; prompt: string }>;
@@ -277,13 +324,16 @@ export async function POST(request: NextRequest) {
 
     if (analysis && analysis.hairstyles?.length >= 6) {
       console.log('Using Gemini-generated personalized prompts');
-      faceAnalysis = analysis.face_analysis;
+      faceAnalysis = {
+        shape: analysis.face_shape,
+        reasoning: analysis.reasoning
+      };
       stylesToGenerate = analysis.hairstyles.map(h => ({
-        name: h.style_name,
-        prompt: h.image_generation_prompts.front_view
+        name: h.name,
+        prompt: h.prompts.front
       }));
     } else {
-      console.log('Using fallback prompts');
+      console.log('Using fallback prompts (analysis failed or incomplete)');
       stylesToGenerate = FALLBACK_STYLES;
     }
 
@@ -304,8 +354,8 @@ export async function POST(request: NextRequest) {
         styleIndex: idx,
         styleName: style.name,
         image: imageUrl,
-        reasoning: analysis?.hairstyles?.[idx]?.geometry_match_reasoning || null,
-        error: imageUrl ? null : 'Generation failed'
+        description: analysis?.hairstyles?.[idx]?.description || null,
+        error: imageUrl ? null : 'Generation failed - try a different photo'
       });
       
       // Small delay between requests to avoid rate limiting
@@ -321,14 +371,17 @@ export async function POST(request: NextRequest) {
       success: successCount > 0,
       faceAnalysis,
       results,
-      message: `Generated ${successCount}/${results.length} hairstyles`
+      message: successCount > 0 
+        ? `Generated ${successCount}/${results.length} hairstyles`
+        : 'Failed to generate styles. Please try a different photo.'
     });
 
   } catch (error) {
     console.error('API error:', error);
+    // Return graceful error, not a crash
     return NextResponse.json({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'Server error'
+      error: 'Failed to generate styles. Please try a different photo.'
     }, { status: 500 });
   }
 }
