@@ -21,11 +21,6 @@ const HAIRSTYLE_PROMPTS: Record<number, string> = {
 };
 
 async function generateWithReplicate(userPhotoBase64: string, styleIndex: number): Promise<string | null> {
-  if (!REPLICATE_API_KEY) {
-    console.error('REPLICATE_API_TOKEN not configured');
-    return null;
-  }
-
   // Remove data URL prefix if present
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   const dataUrl = `data:image/jpeg;base64,${base64Data}`;
@@ -54,7 +49,7 @@ async function generateWithReplicate(userPhotoBase64: string, styleIndex: number
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Replicate API error:`, errorText);
+      console.error(`Replicate API error for style ${styleIndex}:`, response.status, errorText);
       return null;
     }
 
@@ -101,10 +96,13 @@ async function generateWithReplicate(userPhotoBase64: string, styleIndex: number
 
 export async function POST(request: NextRequest) {
   try {
+    // Check for API key
     if (!REPLICATE_API_KEY) {
+      console.error('REPLICATE_API_TOKEN not found in environment variables');
       return NextResponse.json({ 
         success: false, 
-        error: 'REPLICATE_API_TOKEN not configured. Add it to Vercel environment variables.' 
+        error: 'REPLICATE_API_TOKEN not configured. Please add it to Vercel environment variables.',
+        hint: 'Go to Vercel Dashboard → Project Settings → Environment Variables → Add REPLICATE_API_TOKEN'
       }, { status: 500 });
     }
 
@@ -122,8 +120,10 @@ export async function POST(request: NextRequest) {
     const stylesToGenerate = styleIndex !== undefined ? [styleIndex] : [0, 1, 2, 3, 4, 5];
     const results = [];
 
+    console.log(`Starting hairstyle generation for ${stylesToGenerate.length} styles...`);
+
     for (const idx of stylesToGenerate) {
-      console.log(`Generating style ${idx}: ${HAIRSTYLE_NAMES[idx]} with Replicate...`);
+      console.log(`Generating style ${idx}: ${HAIRSTYLE_NAMES[idx]}...`);
       
       const imageUrl = await generateWithReplicate(userPhoto, idx);
       
@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
     }
 
     const successCount = results.filter(r => r.image).length;
+    console.log(`Generation complete: ${successCount}/${results.length} successful`);
     
     return NextResponse.json({
       success: successCount > 0,
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest) {
     console.error('API error:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Server error' 
+      error: error instanceof Error ? error.message : 'Server error'
     }, { status: 500 });
   }
 }
