@@ -24,6 +24,7 @@ async function generateAllHairstyles(userPhotoBase64: string): Promise<string | 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
+            role: "user",
             parts: [
               {
                 inlineData: {
@@ -32,7 +33,7 @@ async function generateAllHairstyles(userPhotoBase64: string): Promise<string | 
                 }
               },
               {
-                text: `please create 6 images for my new hairstyle:
+                text: `Please create 6 images showing me with different hairstyles:
 
 1. Classic Side Part - hair neatly combed to one side with a clean part line
 2. Textured Crop - short faded sides with textured messy top
@@ -46,7 +47,7 @@ Show me how I would look with each hairstyle. Create a grid showing all 6 styles
             ]
           }],
           generationConfig: {
-            responseModalities: ["image", "text"]
+            responseModalities: ["TEXT", "IMAGE"]
           }
         })
       }
@@ -101,6 +102,7 @@ async function generateSingleHairstyle(userPhotoBase64: string, styleIndex: numb
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
+            role: "user",
             parts: [
               {
                 inlineData: {
@@ -114,7 +116,7 @@ async function generateSingleHairstyle(userPhotoBase64: string, styleIndex: numb
             ]
           }],
           generationConfig: {
-            responseModalities: ["image", "text"]
+            responseModalities: ["TEXT", "IMAGE"]
           }
         })
       }
