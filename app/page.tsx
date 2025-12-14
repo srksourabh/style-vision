@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Sparkles, RefreshCw, ChevronDown, X, Loader2, Grid3X3, ChevronLeft, ChevronRight, Scissors, Clock, Star, Wand2, ExternalLink, Copy, Check } from 'lucide-react';
+import { Camera, Sparkles, RefreshCw, ChevronDown, X, Loader2, LayoutGrid, ChevronLeft, ChevronRight, Scissors, Clock, Star, Wand2, ExternalLink, Copy, Check } from 'lucide-react';
 
 // Hairstyle data with reference images
 const HAIRSTYLES = [
@@ -384,7 +384,7 @@ print("Done! Right-click images to save.")`
 
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
             <p className="text-sm text-yellow-800">
-              <strong>Important:</strong> In Colab, go to <strong>Runtime → Change runtime type → T4 GPU</strong> before running the code.
+              <strong>Important:</strong> In Colab, go to <strong>Runtime &rarr; Change runtime type &rarr; T4 GPU</strong> before running the code.
             </p>
           </div>
 
@@ -415,9 +415,9 @@ print("Done! Right-click images to save.")`
             <strong>How to use:</strong>
             <ol className="list-decimal ml-4 mt-1 space-y-1">
               <li>Open Google Colab link above</li>
-              <li>Click "+ Code" to add a new cell</li>
-              <li>Copy & paste each code block in order</li>
-              <li>Press the Play button ▶ on each cell</li>
+              <li>Click &quot;+ Code&quot; to add a new cell</li>
+              <li>Copy &amp; paste each code block in order</li>
+              <li>Press the Play button on each cell</li>
               <li>Allow camera access when prompted</li>
             </ol>
           </div>
@@ -443,7 +443,7 @@ print("Done! Right-click images to save.")`
 
         <section className="max-w-4xl mx-auto px-4 py-16 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-100 rounded-full mb-4">
-            <Grid3X3 className="w-4 h-4 text-purple-600" />
+            <LayoutGrid className="w-4 h-4 text-purple-600" />
             <span className="text-xs font-semibold text-purple-700">AI Hairstyle Advisor</span>
           </div>
           
@@ -471,7 +471,7 @@ print("Done! Right-click images to save.")`
               <p className="text-sm font-medium">Take Photo</p>
             </div>
             <div className="p-4 bg-white rounded-xl shadow-sm">
-              <Grid3X3 className="w-8 h-8 text-teal-600 mx-auto mb-2" />
+              <LayoutGrid className="w-8 h-8 text-teal-600 mx-auto mb-2" />
               <p className="text-sm font-medium">See 6 Styles</p>
             </div>
             <div className="p-4 bg-white rounded-xl shadow-sm">
