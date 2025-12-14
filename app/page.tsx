@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, X, Loader2, Grid3X3 } from 'lucide-react';
+import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, X, Loader2, Grid3X3, AlertCircle } from 'lucide-react';
 
 // Hairstyle names from our API
 const HAIRSTYLE_NAMES = [
@@ -33,6 +33,7 @@ export default function StyleVision() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedStyles, setGeneratedStyles] = useState<GeneratedStyle[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -140,6 +141,7 @@ export default function StyleVision() {
     if (!capturedPhoto) return;
     
     setIsGenerating(true);
+    setApiError(null);
     
     // Initialize all styles as loading
     const initialStyles: GeneratedStyle[] = HAIRSTYLE_NAMES.map(name => ({
@@ -153,6 +155,8 @@ export default function StyleVision() {
     // Generate each hairstyle
     for (let i = 0; i < HAIRSTYLE_NAMES.length; i++) {
       try {
+        console.log(`Generating hairstyle ${i + 1}: ${HAIRSTYLE_NAMES[i]}`);
+        
         const response = await fetch('/api/hairstyle-gen', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -163,22 +167,43 @@ export default function StyleVision() {
         });
 
         const result = await response.json();
+        console.log(`Result for ${HAIRSTYLE_NAMES[i]}:`, result);
 
-        setGeneratedStyles(prev => prev.map((style, idx) => 
-          idx === i ? {
-            ...style,
-            loading: false,
-            image: result.success ? result.image : null,
-            error: result.success ? null : (result.error || 'Generation failed')
-          } : style
-        ));
+        if (result.success && result.image) {
+          setGeneratedStyles(prev => prev.map((style, idx) => 
+            idx === i ? {
+              ...style,
+              loading: false,
+              image: result.image,
+              error: null
+            } : style
+          ));
+        } else {
+          const errorMsg = result.error || result.details || 'Generation failed';
+          console.error(`Error for ${HAIRSTYLE_NAMES[i]}:`, errorMsg);
+          
+          // Set global error on first failure
+          if (i === 0) {
+            setApiError(errorMsg);
+          }
+          
+          setGeneratedStyles(prev => prev.map((style, idx) => 
+            idx === i ? {
+              ...style,
+              loading: false,
+              image: null,
+              error: errorMsg
+            } : style
+          ));
+        }
 
       } catch (err) {
+        console.error(`Exception for ${HAIRSTYLE_NAMES[i]}:`, err);
         setGeneratedStyles(prev => prev.map((style, idx) => 
           idx === i ? {
             ...style,
             loading: false,
-            error: 'Failed to generate'
+            error: 'Network error'
           } : style
         ));
       }
@@ -192,6 +217,7 @@ export default function StyleVision() {
     setCurrentView('camera');
     setCapturedPhoto(null);
     setGeneratedStyles([]);
+    setApiError(null);
   };
 
   const back = () => {
@@ -200,12 +226,14 @@ export default function StyleVision() {
     setAnalysisMode(null);
     setCapturedPhoto(null);
     setGeneratedStyles([]);
+    setApiError(null);
   };
 
   const retake = () => {
     setCapturedPhoto(null);
     setGeneratedStyles([]);
     setCountdown(null);
+    setApiError(null);
     setIsCameraActive(true);
     setIsCameraReady(false);
   };
@@ -374,6 +402,23 @@ export default function StyleVision() {
               </div>
             )}
 
+            {/* API Error Banner */}
+            {apiError && (
+              <div className="max-w-2xl mx-auto mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-red-700">Image Generation Issue</h4>
+                    <p className="text-red-600 text-sm mt-1">{apiError}</p>
+                    <p className="text-red-500 text-xs mt-2">
+                      Note: AI image editing of real people may have restrictions. 
+                      Check browser console (F12) for detailed error logs.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Generated Hairstyles Grid */}
             {generatedStyles.length > 0 && (
               <div>
@@ -402,17 +447,18 @@ export default function StyleVision() {
                       className="bg-white rounded-xl overflow-hidden border-2 border-gray-200 hover:border-teal-400 transition-all cursor-pointer"
                       onClick={() => style.image && setSelectedImage(style.image)}
                     >
-                      <div className="aspect-[3/4] relative">
+                      <div className="aspect-[3/4] relative bg-gray-100">
                         {style.loading ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100">
+                          <div className="w-full h-full flex flex-col items-center justify-center">
                             <Loader2 className="w-8 h-8 text-purple-500 animate-spin mb-2" />
                             <p className="text-sm text-gray-500">Generating...</p>
                           </div>
                         ) : style.image ? (
                           <img src={style.image} alt={style.name} className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 p-4">
-                            <p className="text-sm text-red-500 text-center">{style.error || 'Failed'}</p>
+                          <div className="w-full h-full flex flex-col items-center justify-center p-3">
+                            <AlertCircle className="w-8 h-8 text-red-400 mb-2" />
+                            <p className="text-xs text-red-500 text-center line-clamp-3">{style.error || 'Failed to generate'}</p>
                           </div>
                         )}
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent text-white text-center py-2 px-2">
