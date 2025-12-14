@@ -218,7 +218,8 @@ print("Done! Right-click images to save.")`
     for (let y = cy - ry; y < cy + ry; y += 4) {
       for (let x = cx - rx; x < cx + rx; x += 4) {
         if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1) {
-          const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
+          const data = ctx.getImageData(x, y, 1, 1).data;
+          const r = data[0], g = data[1], b = data[2];
           if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) skin++;
           total++;
         }
