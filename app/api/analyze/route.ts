@@ -5,6 +5,35 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 // Get API key from server-side environment variable (more secure)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
+// Simple retry with exponential backoff
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // If rate limited, wait and retry
+      if (response.status === 429 && attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.log(`Rate limited, waiting ${waitTime}ms before retry ${attempt + 1}...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+  
+  throw lastError || new Error('Request failed after retries');
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { imageSrc, analysisType } = await request.json();
@@ -26,7 +55,7 @@ export async function POST(request: NextRequest) {
       ? getColorPrompt()
       : getHairPrompt();
 
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetchWithRetry(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -57,8 +86,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Gemini API error:', errorData);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Gemini API error:', response.status, errorData);
+      
+      // Specific handling for rate limit
+      if (response.status === 429) {
+        return NextResponse.json(
+          { 
+            error: 'Rate limit exceeded. The AI service is temporarily busy. Please wait a minute and try again.',
+            errorCode: 'RATE_LIMITED',
+            useFallback: true 
+          },
+          { status: 429 }
+        );
+      }
+      
       return NextResponse.json(
         { error: `API error: ${response.status}`, details: errorData, useFallback: true },
         { status: response.status }
