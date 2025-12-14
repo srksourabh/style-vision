@@ -10,9 +10,9 @@ const HAIRSTYLES = [
     description: "Timeless and professional look with hair parted to one side",
     matchScore: 92,
     images: [
-      "https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=300&h=400&fit=crop&crop=face"
+      "https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=300&h=300&fit=crop&crop=face"
     ],
     instructions: "Ask your barber for a #2 guard on sides, 3-4 inches on top. Part on your natural side. Use pomade for hold.",
     maintenance: "Low",
@@ -23,9 +23,9 @@ const HAIRSTYLES = [
     description: "Modern and trendy with natural texture on top",
     matchScore: 88,
     images: [
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&h=400&fit=crop&crop=face"
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&h=300&fit=crop&crop=face"
     ],
     instructions: "Short fade on sides (#1-2), 2-3 inches on top with texturizing. Point cut the top for movement.",
     maintenance: "Low",
@@ -36,9 +36,9 @@ const HAIRSTYLES = [
     description: "Polished and sophisticated with hair combed backward",
     matchScore: 85,
     images: [
-      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1548372290-8d01b6c8e78c?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=300&h=400&fit=crop&crop=face"
+      "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1548372290-8d01b6c8e78c?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=300&h=300&fit=crop&crop=face"
     ],
     instructions: "Keep 4-5 inches on top, taper sides. Apply strong-hold pomade on damp hair, comb straight back.",
     maintenance: "Medium",
@@ -49,9 +49,9 @@ const HAIRSTYLES = [
     description: "Bold contrast with buzzed sides and longer top",
     matchScore: 82,
     images: [
-      "https://images.unsplash.com/photo-1531891437562-4301cf35b7e4?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1463453091185-61582044d556?w=300&h=400&fit=crop&crop=face"
+      "https://images.unsplash.com/photo-1531891437562-4301cf35b7e4?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1504257432389-52343af06ae3?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1463453091185-61582044d556?w=300&h=300&fit=crop&crop=face"
     ],
     instructions: "Buzz sides with #0-1 guard, disconnect from top. Keep 4-6 inches on top for styling options.",
     maintenance: "Medium-High",
@@ -62,9 +62,9 @@ const HAIRSTYLES = [
     description: "Clean and classic military-inspired short cut",
     matchScore: 90,
     images: [
-      "https://images.unsplash.com/photo-1552058544-f2b08422138a?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1557862921-37829c790f19?w=300&h=400&fit=crop&crop=face"
+      "https://images.unsplash.com/photo-1552058544-f2b08422138a?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1557862921-37829c790f19?w=300&h=300&fit=crop&crop=face"
     ],
     instructions: "#1-2 on sides fading up, 1-2 inches on top. Blend well at the temples. Minimal product needed.",
     maintenance: "Very Low",
@@ -75,9 +75,9 @@ const HAIRSTYLES = [
     description: "Edgy and youthful with upward spiky texture",
     matchScore: 78,
     images: [
-      "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1480455624313-e29b44bbfde1?w=300&h=400&fit=crop&crop=face",
-      "https://images.unsplash.com/photo-1507591064344-4c6ce005b128?w=300&h=400&fit=crop&crop=face"
+      "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1480455624313-e29b44bbfde1?w=300&h=300&fit=crop&crop=face",
+      "https://images.unsplash.com/photo-1507591064344-4c6ce005b128?w=300&h=300&fit=crop&crop=face"
     ],
     instructions: "Fade sides (#2), 2-3 inches on top. Use matte clay or wax, work through dry hair pointing upward.",
     maintenance: "Medium",
@@ -155,14 +155,26 @@ export default function StyleVision() {
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
     const v = videoRef.current, c = canvasRef.current;
-    c.width = v.videoWidth; c.height = v.videoHeight;
+    // Square crop from center
+    const size = Math.min(v.videoWidth, v.videoHeight);
+    c.width = size; 
+    c.height = size;
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    if (facingMode === 'user') { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
-    ctx.drawImage(v, 0, 0);
+    
+    const offsetX = (v.videoWidth - size) / 2;
+    const offsetY = (v.videoHeight - size) / 2;
+    
+    if (facingMode === 'user') { 
+      ctx.translate(size, 0); 
+      ctx.scale(-1, 1); 
+      ctx.drawImage(v, offsetX, offsetY, size, size, 0, 0, size, size);
+    } else {
+      ctx.drawImage(v, offsetX, offsetY, size, size, 0, 0, size, size);
+    }
+    
     setCapturedPhoto(c.toDataURL('image/jpeg', 0.9));
     stopCamera();
-    // Simulate analysis
     setIsAnalyzing(true);
     setTimeout(() => {
       setIsAnalyzing(false);
@@ -315,7 +327,8 @@ export default function StyleVision() {
 
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-sm">
-            <div className="relative aspect-[3/4] bg-black rounded-2xl overflow-hidden">
+            {/* Square 1:1 camera view */}
+            <div className="relative aspect-square bg-black rounded-2xl overflow-hidden">
               {isCameraActive || isAnalyzing ? (
                 <>
                   <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
@@ -325,7 +338,7 @@ export default function StyleVision() {
                       <img src={capturedPhoto} alt="Captured" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
                         <Loader2 className="w-12 h-12 text-teal-400 animate-spin mb-3" />
-                        <p className="text-white font-medium">Analyzing your features...</p>
+                        <p className="text-white font-medium">Analyzing...</p>
                       </div>
                     </div>
                   )}
@@ -339,7 +352,7 @@ export default function StyleVision() {
                   {isCameraReady && !isAnalyzing && (
                     <>
                       <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                        <ellipse cx="50%" cy="40%" rx="28%" ry="22%" fill="none" stroke={faceDetected ? '#14b8a6' : '#a855f7'} strokeWidth="2" strokeDasharray="8,4" />
+                        <ellipse cx="50%" cy="45%" rx="35%" ry="40%" fill="none" stroke={faceDetected ? '#14b8a6' : '#a855f7'} strokeWidth="2" strokeDasharray="8,4" />
                       </svg>
                       <div className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/70 rounded-full">
                         <p className="text-white text-xs font-medium">{faceDetected ? '✓ Face Detected' : 'Position face in oval'}</p>
@@ -380,125 +393,131 @@ export default function StyleVision() {
     );
   }
 
-  // Results View - Compact Grid
+  // Results View - Side by Side Layout
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       <header className="bg-white border-b sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button onClick={back} className="flex items-center gap-1 text-gray-600 hover:text-gray-900">
-            <ChevronDown className="w-5 h-5 rotate-90" /> Home
+        <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between">
+          <button onClick={back} className="flex items-center gap-1 text-gray-600 hover:text-gray-900 text-sm">
+            <ChevronDown className="w-4 h-4 rotate-90" /> Home
           </button>
-          <h1 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
+          <h1 className="text-base font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
             Your Hairstyle Options
           </h1>
           <button onClick={retake} className="text-sm text-purple-600 font-medium">Retake</button>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto p-4">
-        {/* Compact Grid - 2 rows x 3 columns */}
-        <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-          {/* Your Photo - Smaller */}
-          <div className="bg-white rounded-xl overflow-hidden shadow-sm border-2 border-purple-400">
-            <div className="aspect-square relative">
-              {capturedPhoto && <img src={capturedPhoto} alt="You" className="w-full h-full object-cover" />}
-              <div className="absolute bottom-0 left-0 right-0 bg-purple-600 text-white text-center py-1">
-                <p className="text-xs font-semibold">You</p>
+      <div className="max-w-5xl mx-auto p-3">
+        {/* Side by Side: Your Photo LEFT | 6 Styles RIGHT */}
+        <div className="flex gap-3">
+          {/* LEFT: Your Photo (1:1) */}
+          <div className="w-1/3 flex-shrink-0">
+            <div className="bg-white rounded-xl overflow-hidden shadow border-2 border-purple-500">
+              <div className="aspect-square relative">
+                {capturedPhoto && <img src={capturedPhoto} alt="You" className="w-full h-full object-cover" />}
+              </div>
+              <div className="bg-purple-600 text-white text-center py-1.5">
+                <p className="text-sm font-bold">Your Photo</p>
               </div>
             </div>
           </div>
 
-          {/* 6 Hairstyle Options */}
-          {HAIRSTYLES.map((style, idx) => (
-            <div 
-              key={idx}
-              className={`bg-white rounded-xl overflow-hidden shadow-sm border-2 cursor-pointer transition-all hover:shadow-md ${selectedStyle?.index === idx ? 'border-teal-500 ring-2 ring-teal-200' : 'border-gray-200'}`}
-              onClick={() => setSelectedStyle({ index: idx, imageIndex: imageIndexes[idx] })}
-            >
-              <div className="aspect-square relative group">
-                <img 
-                  src={style.images[imageIndexes[idx]]} 
-                  alt={style.name} 
-                  className="w-full h-full object-cover"
-                />
-                
-                {/* Rotate buttons on hover */}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-between px-1 opacity-0 group-hover:opacity-100">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); rotateImage(idx, 'prev'); }}
-                    className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center shadow"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); rotateImage(idx, 'next'); }}
-                    className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center shadow"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+          {/* RIGHT: 6 Hairstyles in 3x2 grid */}
+          <div className="flex-1">
+            <div className="grid grid-cols-3 gap-2">
+              {HAIRSTYLES.map((style, idx) => (
+                <div 
+                  key={idx}
+                  className={`bg-white rounded-lg overflow-hidden shadow cursor-pointer transition-all hover:shadow-md ${selectedStyle?.index === idx ? 'ring-2 ring-teal-500' : ''}`}
+                  onClick={() => setSelectedStyle({ index: idx, imageIndex: imageIndexes[idx] })}
+                >
+                  <div className="aspect-square relative group">
+                    <img 
+                      src={style.images[imageIndexes[idx]]} 
+                      alt={style.name} 
+                      className="w-full h-full object-cover"
+                    />
+                    
+                    {/* Rotate buttons on hover */}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-between px-1 opacity-0 group-hover:opacity-100">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); rotateImage(idx, 'prev'); }}
+                        className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center"
+                      >
+                        <ChevronLeft className="w-3 h-3" />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); rotateImage(idx, 'next'); }}
+                        className="w-5 h-5 bg-white/90 rounded-full flex items-center justify-center"
+                      >
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+                    </div>
 
-                {/* Match score badge */}
-                <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-teal-500 text-white text-[10px] font-bold rounded">
-                  {style.matchScore}%
-                </div>
+                    {/* Match score */}
+                    <div className="absolute top-1 right-1 px-1 py-0.5 bg-teal-500 text-white text-[9px] font-bold rounded">
+                      {style.matchScore}%
+                    </div>
 
-                {/* Name overlay */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent py-1.5 px-2">
-                  <p className="text-white text-xs font-semibold truncate">{style.name}</p>
+                    {/* Name */}
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent py-1 px-1.5">
+                      <p className="text-white text-[10px] font-semibold truncate">{style.name}</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
 
-        {/* Selected Style Details */}
+        {/* Selected Style Details - Below */}
         {selectedStyle !== null && (
-          <div className="mt-4 bg-white rounded-xl shadow-sm border p-4">
-            <div className="flex items-start justify-between mb-3">
+          <div className="mt-3 bg-white rounded-xl shadow border p-3">
+            <div className="flex items-start justify-between mb-2">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">{HAIRSTYLES[selectedStyle.index].name}</h3>
-                <p className="text-sm text-gray-600">{HAIRSTYLES[selectedStyle.index].description}</p>
+                <h3 className="text-base font-bold text-gray-900">{HAIRSTYLES[selectedStyle.index].name}</h3>
+                <p className="text-xs text-gray-600">{HAIRSTYLES[selectedStyle.index].description}</p>
               </div>
-              <div className="flex items-center gap-1 px-2 py-1 bg-teal-100 rounded-lg">
-                <Star className="w-4 h-4 text-teal-600" />
-                <span className="text-sm font-bold text-teal-700">{HAIRSTYLES[selectedStyle.index].matchScore}% Match</span>
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-teal-100 rounded">
+                <Star className="w-3 h-3 text-teal-600" />
+                <span className="text-xs font-bold text-teal-700">{HAIRSTYLES[selectedStyle.index].matchScore}%</span>
               </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-purple-50 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Scissors className="w-4 h-4 text-purple-600" />
-                  <h4 className="font-semibold text-purple-900 text-sm">Barber Instructions</h4>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="bg-purple-50 rounded-lg p-2">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Scissors className="w-3.5 h-3.5 text-purple-600" />
+                  <h4 className="font-semibold text-purple-900 text-xs">Barber Instructions</h4>
                 </div>
-                <p className="text-sm text-purple-800">{HAIRSTYLES[selectedStyle.index].instructions}</p>
+                <p className="text-xs text-purple-800">{HAIRSTYLES[selectedStyle.index].instructions}</p>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-500" />
-                  <span className="text-sm"><strong>Maintenance:</strong> {HAIRSTYLES[selectedStyle.index].maintenance}</span>
+              <div className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-xs"><strong>Maintenance:</strong> {HAIRSTYLES[selectedStyle.index].maintenance}</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <Star className="w-4 h-4 text-gray-500 mt-0.5" />
-                  <span className="text-sm"><strong>Best For:</strong> {HAIRSTYLES[selectedStyle.index].bestFor}</span>
+                <div className="flex items-start gap-1.5">
+                  <Star className="w-3.5 h-3.5 text-gray-500 mt-0.5" />
+                  <span className="text-xs"><strong>Best For:</strong> {HAIRSTYLES[selectedStyle.index].bestFor}</span>
                 </div>
               </div>
             </div>
 
             <button 
               onClick={() => setSelectedStyle(null)}
-              className="mt-3 w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+              className="mt-2 w-full py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
             >
-              Close Details
+              Close
             </button>
           </div>
         )}
 
         {!selectedStyle && (
-          <p className="text-center text-gray-500 text-sm mt-4">
-            👆 Tap any hairstyle to see details & barber instructions. Hover to rotate angles.
+          <p className="text-center text-gray-500 text-xs mt-3">
+            Tap any hairstyle to see barber instructions. Hover to rotate angles.
           </p>
         )}
       </div>
