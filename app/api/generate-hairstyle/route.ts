@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Gemini models
 const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
 const GEMINI_IMAGE_MODEL = 'gemini-2.0-flash-exp';
 
@@ -11,7 +10,7 @@ interface StylistTip {
   tip: string;
 }
 
-interface HairstyleAnalysis {
+interface StyleAnalysis {
   face_shape: string;
   face_measurements: {
     forehead_width: string;
@@ -23,8 +22,9 @@ interface HairstyleAnalysis {
     chin_shape: string;
     proportions: string;
   };
+  skin_tone?: string;
   styling_goals: string;
-  hairstyles: Array<{
+  styles: Array<{
     id: number;
     name: string;
     trend_source: string;
@@ -39,49 +39,74 @@ interface HairstyleAnalysis {
   }>;
 }
 
-// Utility functions
+// Bridal categories
+const BRIDAL_CATEGORIES = {
+  // Indian Regional
+  bengali: { name: 'Bengali', region: 'Indian', description: 'Traditional Bengali bride with alta, white-red saree, shakha-pola bangles, large red bindi, gold jewelry' },
+  assamese: { name: 'Assamese', region: 'Indian', description: 'Assamese bride with mekhela chador, traditional gamkharu jewelry, kopou phool, subtle makeup' },
+  gujarati: { name: 'Gujarati', region: 'Indian', description: 'Gujarati bride with bandhani saree, maang tikka, nath, heavy kundan jewelry, colorful makeup' },
+  kashmiri: { name: 'Kashmiri', region: 'Indian', description: 'Kashmiri bride with pheran, dejhoor headgear, athoor earrings, subtle pink-red makeup' },
+  punjabi: { name: 'Punjabi', region: 'Indian', description: 'Punjabi bride with red lehenga, heavy gold jewelry, choora bangles, kaleere, bold makeup' },
+  south_indian: { name: 'South Indian', region: 'Indian', description: 'South Indian bride with silk saree, temple jewelry, jasmine gajra, traditional gold' },
+  marathi: { name: 'Marathi', region: 'Indian', description: 'Marathi bride with nauvari saree, mundavalya, nath, green bangles, traditional makeup' },
+  rajasthani: { name: 'Rajasthani', region: 'Indian', description: 'Rajasthani bride with heavy lehenga, borla maang tikka, aad necklace, bold red-orange makeup' },
+  odia: { name: 'Odia', region: 'Indian', description: 'Odia bride with sambalpuri saree, traditional gold jewelry, red-white theme' },
+  bihari: { name: 'Bihari', region: 'Indian', description: 'Bihari bride with red saree, maang tikka, shringar, traditional gold ornaments' },
+  
+  // Religious
+  hindu: { name: 'Hindu Traditional', region: 'Religious', description: 'Traditional Hindu bride with sindoor, mangalsutra, red attire, gold jewelry, traditional makeup' },
+  muslim: { name: 'Muslim Nikah', region: 'Religious', description: 'Muslim bride with sharara/gharara, hijab styling option, subtle elegant makeup, pearl jewelry' },
+  christian: { name: 'Christian', region: 'Religious', description: 'Christian bride with white gown, veil, tiara, elegant Western makeup, subtle jewelry' },
+  sikh: { name: 'Sikh Anand Karaj', region: 'Religious', description: 'Sikh bride with red/pink lehenga, kalgi, choora, kundan jewelry, radiant makeup' },
+  parsi: { name: 'Parsi', region: 'Religious', description: 'Parsi bride with white saree, mathubanu headpiece, subtle elegant makeup' },
+  
+  // International
+  western: { name: 'Western', region: 'International', description: 'Western bride with white gown, veil, tiara, natural glam makeup, diamond jewelry' },
+  korean: { name: 'Korean', region: 'International', description: 'Korean bride with hanbok or modern dress, glass skin makeup, subtle colors, elegant hair' },
+  japanese: { name: 'Japanese', region: 'International', description: 'Japanese bride with shiromuku or modern dress, porcelain skin makeup, red lips option' },
+  chinese: { name: 'Chinese', region: 'International', description: 'Chinese bride with qipao/red dress, phoenix crown option, red-gold theme makeup' },
+  spanish: { name: 'Spanish', region: 'International', description: 'Spanish bride with mantilla veil, flamenco-inspired, bold red lips, dramatic eyes' },
+  italian: { name: 'Italian', region: 'International', description: 'Italian bride with elegant gown, romantic soft glam makeup, classic beauty' },
+  greek: { name: 'Greek', region: 'International', description: 'Greek bride with goddess-style draping, olive branch accents, natural Mediterranean glow' },
+  arabic: { name: 'Arabic', region: 'International', description: 'Arabic bride with dramatic eyes, gold accents, luxurious kaftan, heavy jewelry' },
+  african: { name: 'African', region: 'International', description: 'African bride with vibrant colors, headwrap/gele, bold patterns, radiant skin' },
+  thai: { name: 'Thai', region: 'International', description: 'Thai bride with traditional Thai dress, gold jewelry, elegant Thai makeup' },
+  vietnamese: { name: 'Vietnamese', region: 'International', description: 'Vietnamese bride with ao dai, khan dong headpiece, natural elegant makeup' },
+  indonesian: { name: 'Indonesian', region: 'International', description: 'Indonesian bride with kebaya, traditional gold accessories, soft glam makeup' },
+  filipino: { name: 'Filipino', region: 'International', description: 'Filipino bride with terno/filipiniana, subtle elegant makeup, pearls' },
+  mexican: { name: 'Mexican', region: 'International', description: 'Mexican bride with colorful embroidery, flowers in hair, vibrant makeup' },
+  russian: { name: 'Russian', region: 'International', description: 'Russian bride with kokoshnik option, elegant gown, classic red lip makeup' }
+};
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 function cleanJsonResponse(text: string): string {
   let cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    cleaned = jsonMatch[0];
-  }
+  if (jsonMatch) cleaned = jsonMatch[0];
   return cleaned;
 }
 
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries: number = 3): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      console.log(`API attempt ${attempt + 1}/${maxRetries}...`);
       const response = await fetch(url, options);
-      
       if (response.status >= 500 && response.status < 600) {
-        const errorText = await response.text();
-        console.error(`Server error ${response.status}:`, errorText.substring(0, 200));
         if (attempt < maxRetries - 1) {
-          const waitTime = Math.pow(2, attempt) * 1000;
-          await sleep(waitTime);
+          await sleep(Math.pow(2, attempt) * 1000);
           continue;
         }
-        throw new Error(`Server error ${response.status} after ${maxRetries} attempts`);
+        throw new Error(`Server error ${response.status}`);
       }
-      
       if (response.status >= 400 && response.status < 500) {
         const errorText = await response.text();
-        console.error(`Client error ${response.status}:`, errorText.substring(0, 200));
         throw new Error(`Client error ${response.status}: ${errorText.substring(0, 100)}`);
       }
-      
       return response;
     } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        if (attempt < maxRetries - 1) {
-          const waitTime = Math.pow(2, attempt) * 1000;
-          await sleep(waitTime);
-          continue;
-        }
+      if (error instanceof TypeError && attempt < maxRetries - 1) {
+        await sleep(Math.pow(2, attempt) * 1000);
+        continue;
       }
       throw error;
     }
@@ -89,118 +114,122 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries: num
   throw new Error('Max retries reached');
 }
 
-// Mode-specific prompts
-function getAnalysisPrompt(mode: 'hair' | 'bridal' | 'color'): string {
+function getAnalysisPrompt(mode: string, bridalCategory?: string): string {
   const baseRole = `### ROLE ###
-You are a world-class **Face Morphologist** and **Celebrity Hair Stylist** with 25+ years of experience. You have trained under and collaborated with the world's most renowned hair stylists including:
+You are a world-class **Face Morphologist** and **Celebrity Stylist** with 25+ years of experience. You have expertise in:
 
 **LEGENDARY STYLISTS YOU CHANNEL:**
-- **Javed Habib** (India) - Known for "No Shortcuts to Success", precision cuts, and making styling accessible
-- **Aalim Hakim** (India) - Bollywood's favorite, known for transformative celebrity makeovers
-- **Vidal Sassoon** (UK) - Revolutionary geometric cuts, "If you don't look good, we don't look good"
-- **Oribe Canales** (USA) - Hollywood red carpet master, texture and movement expert
-- **Rossano Ferretti** (Italy) - "The Method" invisible haircut technique, natural elegance
-- **Sam McKnight** (UK) - Princess Diana's stylist, British fashion icon maker
-- **Guido Palau** (UK) - Fashion week mastermind, avant-garde trendsetter
-- **Jen Atkin** (USA) - Kardashian stylist, social media hair icon
-- **Yuko Yamashita** (Japan) - Japanese straightening pioneer, Asian hair specialist
-- **Kim Sun-young** (Korea) - K-beauty hair trends, glass hair technique`;
+- **Javed Habib** (India) - Precision cuts, transformative styling
+- **Aalim Hakim** (India) - Bollywood celebrity makeovers
+- **Vidal Sassoon** (UK) - Revolutionary geometric cuts
+- **Oribe Canales** (USA) - Hollywood red carpet master
+- **Bobbi Brown** (USA) - Natural beauty makeup pioneer
+- **Charlotte Tilbury** (UK) - Hollywood glamour makeup
+- **Pat McGrath** (UK) - Fashion makeup legend
+- **Mickey Contractor** (India) - Bollywood makeup master
+- **Namrata Soni** (India) - Celebrity bridal makeup artist
+- **Ambika Pillai** (India) - Bridal and celebrity stylist`;
 
   const faceMeasurement = `
 ### TASK ###
-**Step 1: MEASURE the face in the uploaded photo**
-Perform detailed facial geometry analysis:
-- Measure forehead width and height
-- Measure cheekbone width (widest point)
-- Measure jawline width and shape (angular/soft/square/tapered)
-- Calculate face length vs width ratio
-- Identify chin shape (pointed/rounded/square)
-- Assess overall facial proportions against Golden Ratio
+**Step 1: ANALYZE the face**
+- Face shape (Oval, Round, Square, Diamond, Heart, Oblong)
+- Skin tone and undertone (warm/cool/neutral)
+- Eye shape and features
+- Lip shape
+- Facial proportions
 
-**Step 2: DETERMINE the face shape**
-Based on measurements, classify as: Oval, Round, Square, Rectangle, Diamond, Heart, Oblong, or Triangle
-
-**Step 3: IDENTIFY styling goals**
-Determine specific objectives to enhance this face:
-- **Add Height**: Does the face need vertical elongation?
-- **Create Angles**: Does the face need more angular definition?
-- **Slim the Face**: Does the face need narrowing effects?
-- **Define Jawline**: Does the jawline need more definition?
-- **Balance Proportions**: What needs balancing (forehead/chin ratio, etc.)?
-- **Soften Features**: Do any features need softening?`;
+**Step 2: IDENTIFY styling goals**
+- Add height where needed
+- Create angles and definition
+- Slim/contour the face
+- Define jawline
+- Balance proportions
+- Highlight best features`;
 
   let modeSpecific = '';
   
   if (mode === 'hair') {
     modeSpecific = `
-**Step 4: RECOMMEND 6 HAIRSTYLES**
-Based on YOUR expert analysis, current global fashion trends (2024-2025), and wisdom from legendary stylists, recommend exactly 6 hairstyles that will:
-- ADD HEIGHT where needed through volume placement
+**Step 3: RECOMMEND 6 HAIRSTYLES**
+Based on face analysis and global fashion trends (2024-2025), recommend 6 hairstyles that:
+- ADD HEIGHT through volume placement
 - CREATE ANGLES to define facial structure
-- SLIM THE FACE through strategic layering and framing
-- DEFINE THE JAWLINE through length and texture choices
-- CREATE BALANCED APPEARANCE overall
+- SLIM THE FACE through strategic layering
+- DEFINE THE JAWLINE through length and texture
+- CREATE BALANCED APPEARANCE
 
-For EACH hairstyle, generate prompts for BOTH front view AND back view.
-The styles should be diverse: include classic, modern, trendy, and bold options.`;
-  } else if (mode === 'bridal') {
+Generate prompts for BOTH front and back views.`;
+  } else if (mode === 'bridal' && bridalCategory) {
+    const category = BRIDAL_CATEGORIES[bridalCategory as keyof typeof BRIDAL_CATEGORIES];
+    const categoryInfo = category || { name: 'Traditional', description: 'Traditional bridal look' };
+    
     modeSpecific = `
-**Step 4: RECOMMEND 6 BRIDAL HAIRSTYLES**
-Based on YOUR expert analysis and bridal fashion trends, recommend exactly 6 BRIDAL/WEDDING hairstyles that will:
-- CREATE ELEGANCE suitable for wedding ceremonies
-- COMPLEMENT traditional and modern bridal wear (lehenga, saree, gown)
-- ADD HEIGHT AND VOLUME for a regal appearance
-- FRAME THE FACE beautifully for wedding photography
-- ACCOMMODATE bridal accessories (maang tikka, flowers, veil, tiara)
+**Step 3: RECOMMEND 6 ${categoryInfo.name.toUpperCase()} BRIDAL LOOKS**
 
-Consider styles like: Elegant updos, romantic curls, braided styles, half-up half-down, traditional buns, modern bridal waves.
-For EACH hairstyle, generate prompts for BOTH front view AND back view.`;
+You are creating **${categoryInfo.name}** bridal makeovers. 
+Traditional elements: ${categoryInfo.description}
+
+For each look, you must TRANSFORM THE FACE with:
+1. **FULL BRIDAL MAKEUP** - Foundation, contouring, highlighting, blush, eye makeup (eyeshadow, eyeliner, kajal, mascara, false lashes if appropriate), lip color, bindi/decoration as per tradition
+2. **BRIDAL HAIRSTYLE** - Traditional or modern hairstyle appropriate for ${categoryInfo.name} bride
+3. **JEWELRY & ACCESSORIES** - Maang tikka, nath, earrings, necklace, hair accessories as per ${categoryInfo.name} tradition
+4. **COLOR THEME** - Traditional colors for ${categoryInfo.name} bridal look
+
+Each of the 6 looks should be a VARIATION:
+- Look 1: Traditional classic ${categoryInfo.name} bridal
+- Look 2: Modern fusion ${categoryInfo.name} bridal
+- Look 3: Glamorous/bold ${categoryInfo.name} bridal
+- Look 4: Subtle/elegant ${categoryInfo.name} bridal
+- Look 5: Reception/party ${categoryInfo.name} look
+- Look 6: Contemporary ${categoryInfo.name} bridal
+
+Generate prompts that APPLY MAKEUP TO THE FACE - transform the person into a ${categoryInfo.name} bride.`;
   } else if (mode === 'color') {
     modeSpecific = `
-**Step 4: RECOMMEND 6 HAIR COLORS**
-Based on YOUR expert analysis of their skin tone, face shape, and current color trends, recommend exactly 6 HAIR COLORS that will:
-- COMPLEMENT their skin undertone (warm/cool/neutral)
-- ENHANCE their facial features through strategic color placement
-- ADD DIMENSION through highlights, lowlights, or balayage
-- CREATE FACE-FRAMING effects with color
-- SUIT their lifestyle (low maintenance vs high fashion)
+**Step 3: RECOMMEND 6 HAIR COLORS**
+Based on skin tone analysis and color theory, recommend 6 hair colors that:
+- COMPLEMENT their skin undertone
+- ENHANCE facial features through color placement
+- ADD DIMENSION with highlights/lowlights
+- CREATE FACE-FRAMING effects
 
-Consider colors like: Natural shades, balayage, highlights, ombre, fashion colors, dimensional coloring.
-For EACH color recommendation, generate prompts for BOTH front view AND back view showing the color from different angles.`;
+Generate prompts for BOTH front and back views showing the color.`;
   }
 
   const outputFormat = `
 ### OUTPUT FORMAT (STRICT JSON ONLY) ###
-Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
+Output ONLY raw JSON. No markdown, no code blocks.
 
 {
   "face_shape": "Detected shape",
   "face_measurements": {
     "forehead_width": "Narrow/Medium/Wide",
     "forehead_height": "Low/Medium/High",
-    "cheekbone_width": "Narrow/Medium/Wide + prominence",
+    "cheekbone_width": "Narrow/Medium/Wide",
     "jawline_width": "Narrow/Medium/Wide",
-    "jawline_shape": "Angular/Soft/Square/Rounded/Tapered",
-    "face_length": "Short/Medium/Long relative to width",
-    "chin_shape": "Pointed/Rounded/Square/V-shaped",
+    "jawline_shape": "Angular/Soft/Square/Rounded",
+    "face_length": "Short/Medium/Long",
+    "chin_shape": "Pointed/Rounded/Square",
     "proportions": "Golden ratio assessment"
   },
-  "styling_goals": "Specific goals: add height at crown, create angles at temples, slim face with face-framing layers, define jawline with length below chin, balance wide forehead with volume at sides, etc.",
-  "hairstyles": [
+  "skin_tone": "Fair/Medium/Olive/Dusky/Dark with warm/cool/neutral undertone",
+  "styling_goals": "Specific goals for this face",
+  "styles": [
     {
       "id": 1,
-      "name": "AI recommended style/color name",
-      "trend_source": "Origin (Korean Bridal, Hollywood Glam, Italian Runway, Bollywood Wedding, etc.)",
-      "geometric_reasoning": "How this specifically adds height/creates angles/slims face/defines jawline/balances features",
-      "celebrity_reference": "A celebrity with similar face shape who wears this style/color",
+      "name": "Style/Look name",
+      "trend_source": "Origin/Tradition",
+      "geometric_reasoning": "Why this suits their face",
+      "celebrity_reference": "Celebrity reference",
       "stylist_tip": {
-        "stylist_name": "Name of famous stylist",
-        "tip": "Relevant styling tip from this expert"
+        "stylist_name": "Famous stylist name",
+        "tip": "Professional tip"
       },
       "description": "Detailed description",
       "prompts": {
-        "front": "Transform the hair to [detailed description]. Maintain all facial features unchanged. [Specific styling goals achieved]. Professional photography, photorealistic, fashion magazine quality.",
-        "back": "Back view of the same hairstyle showing [neckline, texture, layers, color placement from behind]. Same person, same style, viewed from behind. Professional photography."
+        "front": "Transform this person into [detailed description]. Apply [specific makeup: foundation, contour, highlight, blush, eye makeup with colors, lip color]. Style hair as [hairstyle]. Add [jewelry/accessories]. Keep facial structure but apply complete makeover. Professional bridal photography, photorealistic.",
+        "back": "Back view of the same bridal look showing [hairstyle details, hair accessories, jewelry from behind]. Professional photography."
       }
     }
   ]
@@ -209,10 +238,9 @@ Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
   return baseRole + faceMeasurement + modeSpecific + outputFormat;
 }
 
-// Step 1: AI Analysis
-async function analyzeAndGeneratePrompts(userPhotoBase64: string, mode: 'hair' | 'bridal' | 'color'): Promise<HairstyleAnalysis | null> {
+async function analyzeAndGeneratePrompts(userPhotoBase64: string, mode: string, bridalCategory?: string): Promise<StyleAnalysis | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
-  const aiAnalysisPrompt = getAnalysisPrompt(mode);
+  const prompt = getAnalysisPrompt(mode, bridalCategory);
 
   try {
     const response = await fetchWithRetry(
@@ -221,12 +249,7 @@ async function analyzeAndGeneratePrompts(userPhotoBase64: string, mode: 'hair' |
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: aiAnalysisPrompt },
-              { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-            ]
-          }],
+          contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: "image/jpeg", data: base64Data } }] }],
           generationConfig: { temperature: 0.9, maxOutputTokens: 8192 },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -241,13 +264,7 @@ async function analyzeAndGeneratePrompts(userPhotoBase64: string, mode: 'hair' |
 
     const data = await response.json();
     
-    if (data.promptFeedback?.blockReason) {
-      console.error(`Gemini blocked: ${data.promptFeedback.blockReason}`);
-      return null;
-    }
-    
-    if (!data.candidates || data.candidates.length === 0 || data.candidates[0].finishReason === 'SAFETY') {
-      console.error('No valid response from Gemini');
+    if (data.promptFeedback?.blockReason || !data.candidates?.length || data.candidates[0].finishReason === 'SAFETY') {
       return null;
     }
     
@@ -255,39 +272,27 @@ async function analyzeAndGeneratePrompts(userPhotoBase64: string, mode: 'hair' |
     if (!text) return null;
 
     const cleanedText = cleanJsonResponse(text);
-    console.log('AI Analysis complete for mode:', mode);
-
-    const analysis = JSON.parse(cleanedText) as HairstyleAnalysis;
-    console.log('Face Shape:', analysis.face_shape);
-    console.log('Styling Goals:', analysis.styling_goals);
+    const analysis = JSON.parse(cleanedText) as StyleAnalysis;
+    console.log('Analysis complete:', analysis.face_shape, 'Mode:', mode, 'Category:', bridalCategory);
     return analysis;
 
   } catch (error) {
-    console.error('Gemini analysis error:', error);
+    console.error('Analysis error:', error);
     return null;
   }
 }
 
-// Step 2: Generate image (front or back)
-async function generateImage(userPhotoBase64: string, prompt: string, styleIndex: number, view: 'front' | 'back'): Promise<string | null> {
+async function generateImage(userPhotoBase64: string, prompt: string, styleIndex: number, view: string): Promise<string | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   
   try {
-    console.log(`Generating style ${styleIndex} ${view} view...`);
-    
     const response = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{
-            role: "user",
-            parts: [
-              { inline_data: { mime_type: "image/jpeg", data: base64Data } },
-              { text: prompt }
-            ]
-          }],
+          contents: [{ role: "user", parts: [{ inline_data: { mime_type: "image/jpeg", data: base64Data } }, { text: prompt }] }],
           generationConfig: { responseModalities: ["TEXT", "IMAGE"], temperature: 1.0 },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -302,30 +307,42 @@ async function generateImage(userPhotoBase64: string, prompt: string, styleIndex
 
     const data = await response.json();
     
-    if (data.promptFeedback?.blockReason || !data.candidates || data.candidates.length === 0) {
-      return null;
-    }
+    if (data.promptFeedback?.blockReason || !data.candidates?.length) return null;
     
-    if (data.candidates[0]?.content?.parts) {
-      for (const part of data.candidates[0].content.parts) {
-        if (part.inlineData?.data) {
-          console.log(`Style ${styleIndex} ${view} - Success`);
-          return `data:image/png;base64,${part.inlineData.data}`;
-        }
+    for (const part of data.candidates[0]?.content?.parts || []) {
+      if (part.inlineData?.data) {
+        return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    
     return null;
   } catch (error) {
-    console.error(`Style ${styleIndex} ${view} error:`, error);
+    console.error(`Generation error:`, error);
     return null;
   }
+}
+
+export async function GET() {
+  // Return bridal categories for dropdown
+  const categories = Object.entries(BRIDAL_CATEGORIES).map(([key, value]) => ({
+    id: key,
+    name: value.name,
+    region: value.region,
+    description: value.description
+  }));
+  
+  const grouped = {
+    indian: categories.filter(c => c.region === 'Indian'),
+    religious: categories.filter(c => c.region === 'Religious'),
+    international: categories.filter(c => c.region === 'International')
+  };
+  
+  return NextResponse.json({ success: true, categories: grouped });
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userPhoto, styleIndex, mode = 'hair' } = body;
+    const { userPhoto, styleIndex, mode = 'hair', bridalCategory } = body;
 
     if (!userPhoto) {
       return NextResponse.json({ success: false, error: 'No photo provided' }, { status: 400 });
@@ -335,54 +352,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'API key not configured' }, { status: 500 });
     }
 
-    // Validate mode
     const validMode = ['hair', 'bridal', 'color'].includes(mode) ? mode : 'hair';
 
-    // Step 1: AI Analysis
-    console.log(`Step 1: AI analyzing face for ${validMode} mode...`);
-    const analysis = await analyzeAndGeneratePrompts(userPhoto, validMode as 'hair' | 'bridal' | 'color');
+    // Analysis
+    console.log(`Analyzing for ${validMode} mode${bridalCategory ? ` - ${bridalCategory}` : ''}...`);
+    const analysis = await analyzeAndGeneratePrompts(userPhoto, validMode, bridalCategory);
     
-    if (!analysis || !analysis.hairstyles?.length) {
+    if (!analysis || !analysis.styles?.length) {
       return NextResponse.json({ 
         success: false, 
-        error: 'Could not analyze face. Please try a clearer photo with good lighting.' 
+        error: 'Could not analyze face. Please try a clearer photo.' 
       }, { status: 400 });
     }
 
     const faceAnalysis = {
       shape: analysis.face_shape,
       measurements: analysis.face_measurements,
+      skinTone: analysis.skin_tone,
       stylingGoals: analysis.styling_goals
     };
 
-    // Prepare styles with prompts
-    const stylesToGenerate = analysis.hairstyles.map(h => ({
-      name: h.name,
-      frontPrompt: h.prompts.front,
-      backPrompt: h.prompts.back,
-      geometricReasoning: h.geometric_reasoning,
-      trendSource: h.trend_source,
-      celebrityReference: h.celebrity_reference,
-      stylistTip: h.stylist_tip,
-      description: h.description
+    const stylesToGenerate = analysis.styles.map(s => ({
+      name: s.name,
+      frontPrompt: s.prompts.front,
+      backPrompt: s.prompts.back,
+      geometricReasoning: s.geometric_reasoning,
+      trendSource: s.trend_source,
+      celebrityReference: s.celebrity_reference,
+      stylistTip: s.stylist_tip,
+      description: s.description
     }));
 
     const indicesToGenerate = styleIndex !== undefined ? [styleIndex] : [0, 1, 2, 3, 4, 5];
     const results = [];
 
-    // Step 2: Generate BOTH front and back images
-    console.log(`Step 2: Generating ${indicesToGenerate.length} styles with front & back views...`);
-    
     for (const idx of indicesToGenerate) {
       if (idx >= stylesToGenerate.length) continue;
       
       const style = stylesToGenerate[idx];
-      console.log(`Generating: ${style.name}`);
-      
-      // Generate front view
       const frontImage = await generateImage(userPhoto, style.frontPrompt, idx, 'front');
-      
-      // Generate back view
       const backImage = await generateImage(userPhoto, style.backPrompt, idx, 'back');
       
       results.push({
@@ -404,23 +412,20 @@ export async function POST(request: NextRequest) {
     }
 
     const successCount = results.filter(r => r.frontImage).length;
-    console.log(`Complete: ${successCount}/${results.length} generated`);
     
     return NextResponse.json({
       success: successCount > 0,
       mode: validMode,
+      bridalCategory,
       faceAnalysis,
       results,
       message: successCount > 0 
-        ? `Generated ${successCount} personalized styles with front & back views`
-        : 'Could not generate styles. Please try a different photo.'
+        ? `Generated ${successCount} looks`
+        : 'Could not generate. Please try a different photo.'
     });
 
   } catch (error) {
     console.error('API error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to analyze. Please try a different photo.'
-    }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed. Please try again.' }, { status: 500 });
   }
 }
