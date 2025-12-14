@@ -1,68 +1,42 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Sparkles, RefreshCw, ChevronDown, X, Loader2, LayoutGrid, Scissors, Clock, Star, Wand2 } from 'lucide-react';
+import { Camera, Sparkles, RefreshCw, ChevronDown, X, Loader2, LayoutGrid, Scissors, Clock, Star, Wand2, User, TrendingUp, Quote } from 'lucide-react';
 
-// Hairstyle data
-const HAIRSTYLES = [
-  {
-    name: "Classic Side Part",
-    description: "Timeless and professional look with hair parted to one side",
-    matchScore: 92,
-    instructions: "Ask your barber for a #2 guard on sides, 3-4 inches on top. Part on your natural side. Use pomade for hold.",
-    maintenance: "Low",
-    bestFor: "Professional settings, interviews, formal events"
-  },
-  {
-    name: "Textured Crop",
-    description: "Modern and trendy with natural texture on top",
-    matchScore: 88,
-    instructions: "Short fade on sides (#1-2), 2-3 inches on top with texturizing. Point cut the top for movement.",
-    maintenance: "Low",
-    bestFor: "Casual style, easy daily maintenance"
-  },
-  {
-    name: "Slicked Back",
-    description: "Polished and sophisticated with hair combed backward",
-    matchScore: 85,
-    instructions: "Keep 4-5 inches on top, taper sides. Apply strong-hold pomade on damp hair, comb straight back.",
-    maintenance: "Medium",
-    bestFor: "Business meetings, elegant events, date nights"
-  },
-  {
-    name: "Undercut",
-    description: "Bold contrast with buzzed sides and longer top",
-    matchScore: 82,
-    instructions: "Buzz sides with #0-1 guard, disconnect from top. Keep 4-6 inches on top for styling options.",
-    maintenance: "Medium-High",
-    bestFor: "Modern style, creative fields, making a statement"
-  },
-  {
-    name: "Crew Cut",
-    description: "Clean and classic military-inspired short cut",
-    matchScore: 90,
-    instructions: "#1-2 on sides fading up, 1-2 inches on top. Blend well at the temples. Minimal product needed.",
-    maintenance: "Very Low",
-    bestFor: "Active lifestyle, minimal styling time, hot weather"
-  },
-  {
-    name: "Spiky Textured",
-    description: "Edgy and youthful with upward spiky texture",
-    matchScore: 78,
-    instructions: "Fade sides (#2), 2-3 inches on top. Use matte clay or wax, work through dry hair pointing upward.",
-    maintenance: "Medium",
-    bestFor: "Casual outings, younger look, creative expression"
-  }
-];
+interface StylistTip {
+  stylist_name: string;
+  tip: string;
+}
+
+interface GeneratedStyle {
+  styleIndex: number;
+  styleName: string;
+  image: string | null;
+  geometricReasoning?: string;
+  trendSource?: string;
+  celebrityReference?: string;
+  stylistTip?: StylistTip;
+  description?: string;
+  error: string | null;
+}
+
+interface FaceAnalysis {
+  shape: string;
+  measurements?: {
+    forehead_width: string;
+    forehead_height: string;
+    cheekbone_width: string;
+    jawline_width: string;
+    jawline_shape: string;
+    face_length: string;
+    chin_shape: string;
+    proportions: string;
+  };
+  stylingGoals?: string;
+}
 
 interface SelectedStyle {
   index: number;
-}
-
-interface GeneratedImage {
-  styleIndex: number;
-  image: string | null;
-  error: string | null;
 }
 
 export default function StyleVision() {
@@ -79,7 +53,8 @@ export default function StyleVision() {
   // AI Generation states
   const [generationProgress, setGenerationProgress] = useState(0);
   const [currentGeneratingStyle, setCurrentGeneratingStyle] = useState(0);
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+  const [generatedStyles, setGeneratedStyles] = useState<GeneratedStyle[]>([]);
+  const [faceAnalysis, setFaceAnalysis] = useState<FaceAnalysis | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -91,11 +66,12 @@ export default function StyleVision() {
   const generateHairstyles = useCallback(async (photo: string) => {
     setCurrentView('generating');
     setGenerationProgress(0);
-    setGeneratedImages([]);
+    setGeneratedStyles([]);
+    setFaceAnalysis(null);
     setGenerationError(null);
     
     try {
-      const results: GeneratedImage[] = [];
+      const results: GeneratedStyle[] = [];
       
       for (let i = 0; i < 6; i++) {
         setCurrentGeneratingStyle(i);
@@ -113,24 +89,49 @@ export default function StyleVision() {
           
           const data = await response.json();
           
+          // Save face analysis from first successful response
+          if (i === 0 && data.faceAnalysis) {
+            setFaceAnalysis(data.faceAnalysis);
+          }
+          
           if (data.success && data.results && data.results[0]) {
-            results.push(data.results[0]);
+            const result = data.results[0];
+            results.push({
+              styleIndex: result.styleIndex,
+              styleName: result.styleName || `Style ${i + 1}`,
+              image: result.image,
+              geometricReasoning: result.geometricReasoning,
+              trendSource: result.trendSource,
+              celebrityReference: result.celebrityReference,
+              stylistTip: result.stylistTip,
+              description: result.description,
+              error: null
+            });
           } else {
-            results.push({ styleIndex: i, image: null, error: data.error || 'Failed to generate' });
+            results.push({ 
+              styleIndex: i, 
+              styleName: `Style ${i + 1}`,
+              image: null, 
+              error: data.error || 'Failed to generate' 
+            });
           }
         } catch (err) {
-          results.push({ styleIndex: i, image: null, error: 'Network error' });
+          results.push({ 
+            styleIndex: i, 
+            styleName: `Style ${i + 1}`,
+            image: null, 
+            error: 'Network error' 
+          });
         }
         
-        setGeneratedImages([...results]);
+        setGeneratedStyles([...results]);
       }
       
       setGenerationProgress(100);
       
-      // Check if we have at least one successful generation
       const successCount = results.filter(r => r.image).length;
       if (successCount === 0) {
-        setGenerationError('Could not generate hairstyles. Please check your API key and try again.');
+        setGenerationError('Could not generate hairstyles. Please try again with a clearer photo.');
       }
       
       setCurrentView('results');
@@ -210,7 +211,6 @@ export default function StyleVision() {
     setCapturedPhoto(photo);
     stopCamera();
     
-    // Automatically start AI generation
     generateHairstyles(photo);
   }, [facingMode, generateHairstyles]);
 
@@ -258,7 +258,8 @@ export default function StyleVision() {
     setCurrentView('camera');
     setCapturedPhoto(null);
     setSelectedStyle(null);
-    setGeneratedImages([]);
+    setGeneratedStyles([]);
+    setFaceAnalysis(null);
     setGenerationError(null);
   };
 
@@ -267,7 +268,8 @@ export default function StyleVision() {
     setCurrentView('landing');
     setCapturedPhoto(null);
     setSelectedStyle(null);
-    setGeneratedImages([]);
+    setGeneratedStyles([]);
+    setFaceAnalysis(null);
   };
 
   const retake = () => {
@@ -277,7 +279,8 @@ export default function StyleVision() {
     setCurrentView('camera');
     setIsCameraActive(true);
     setIsCameraReady(false);
-    setGeneratedImages([]);
+    setGeneratedStyles([]);
+    setFaceAnalysis(null);
     setGenerationError(null);
   };
 
@@ -301,18 +304,18 @@ export default function StyleVision() {
         <section className="max-w-4xl mx-auto px-4 py-16 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-100 rounded-full mb-4">
             <Wand2 className="w-4 h-4 text-purple-600" />
-            <span className="text-xs font-semibold text-purple-700">AI Virtual Try-On</span>
+            <span className="text-xs font-semibold text-purple-700">AI-Powered Face Analysis</span>
           </div>
           
           <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-            See Yourself With New Hairstyles
+            Discover Your Perfect Hairstyle
           </h2>
           <p className="text-lg text-gray-600 mb-8 max-w-xl mx-auto">
-            Take a photo and AI will show you exactly how you would look with 6 different hairstyles
+            AI analyzes your face shape and recommends hairstyles from global fashion trends with tips from world-famous stylists
           </p>
 
           <button onClick={startCamera} className="px-8 py-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold hover:shadow-xl transition-all flex items-center gap-2 justify-center mx-auto">
-            <Camera className="w-5 h-5" /> Try Now - It&apos;s Free
+            <Camera className="w-5 h-5" /> Analyze My Face
           </button>
 
           <div className="grid grid-cols-3 gap-4 mt-12 max-w-lg mx-auto">
@@ -322,12 +325,18 @@ export default function StyleVision() {
             </div>
             <div className="p-4 bg-white rounded-xl shadow-sm">
               <Wand2 className="w-8 h-8 text-teal-600 mx-auto mb-2" />
-              <p className="text-sm font-medium">AI Generates</p>
+              <p className="text-sm font-medium">AI Analyzes Face</p>
             </div>
             <div className="p-4 bg-white rounded-xl shadow-sm">
               <LayoutGrid className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <p className="text-sm font-medium">See 6 Styles</p>
+              <p className="text-sm font-medium">Get Recommendations</p>
             </div>
+          </div>
+          
+          <div className="mt-8 p-4 bg-white/70 rounded-xl max-w-md mx-auto">
+            <p className="text-xs text-gray-500">
+              Featuring tips from <strong>Javed Habib</strong>, <strong>Aalim Hakim</strong>, <strong>Vidal Sassoon</strong>, <strong>Oribe</strong> and more legendary stylists
+            </p>
           </div>
         </section>
       </div>
@@ -405,8 +414,9 @@ export default function StyleVision() {
     );
   }
 
-  // Generating View - Full screen loading
+  // Generating View
   if (currentView === 'generating') {
+    const currentStyle = generatedStyles[currentGeneratingStyle];
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 to-teal-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
@@ -419,9 +429,11 @@ export default function StyleVision() {
             </div>
           </div>
           
-          <h3 className="text-xl font-bold mb-2">Creating Your Looks</h3>
+          <h3 className="text-xl font-bold mb-2">AI Analyzing Your Face</h3>
           <p className="text-gray-600 mb-4">
-            AI is generating <strong>{HAIRSTYLES[currentGeneratingStyle]?.name || 'hairstyle'}</strong>...
+            {currentStyle?.styleName 
+              ? `Generating: ${currentStyle.styleName}` 
+              : 'Finding perfect hairstyles for your face shape...'}
           </p>
           
           <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
@@ -431,16 +443,15 @@ export default function StyleVision() {
             />
           </div>
           
-          <p className="text-sm text-gray-500 mb-6">{generatedImages.length} of 6 complete</p>
+          <p className="text-sm text-gray-500 mb-6">{generatedStyles.length} of 6 complete</p>
           
-          {/* Preview of generated images */}
           <div className="grid grid-cols-6 gap-2">
             {[0, 1, 2, 3, 4, 5].map((idx) => {
-              const generated = generatedImages.find(g => g.styleIndex === idx);
+              const generated = generatedStyles.find(g => g.styleIndex === idx);
               return (
                 <div key={idx} className="aspect-square rounded-lg overflow-hidden bg-gray-100">
                   {generated?.image ? (
-                    <img src={generated.image} alt={`Style ${idx + 1}`} className="w-full h-full object-cover" />
+                    <img src={generated.image} alt={generated.styleName} className="w-full h-full object-cover" />
                   ) : idx === currentGeneratingStyle ? (
                     <div className="w-full h-full flex items-center justify-center">
                       <Loader2 className="w-4 h-4 text-purple-500 animate-spin" />
@@ -461,7 +472,9 @@ export default function StyleVision() {
     );
   }
 
-  // Results View
+  // Results View - Using AI-generated data
+  const selectedStyleData = selectedStyle !== null ? generatedStyles.find(s => s.styleIndex === selectedStyle.index) : null;
+  
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white border-b sticky top-0 z-20">
@@ -470,11 +483,26 @@ export default function StyleVision() {
             <ChevronDown className="w-4 h-4 rotate-90" /> Home
           </button>
           <h1 className="text-base font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-            Your New Looks
+            Your AI Recommendations
           </h1>
           <button onClick={retake} className="text-sm text-purple-600 font-medium">Retake</button>
         </div>
       </header>
+
+      {/* Face Analysis Banner */}
+      {faceAnalysis && (
+        <div className="bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-3">
+          <div className="max-w-5xl mx-auto">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="w-4 h-4" />
+              <span className="font-semibold text-sm">Face Shape: {faceAnalysis.shape}</span>
+            </div>
+            {faceAnalysis.stylingGoals && (
+              <p className="text-xs text-white/90">{faceAnalysis.stylingGoals}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error Banner */}
       {generationError && (
@@ -501,21 +529,20 @@ export default function StyleVision() {
           {/* RIGHT: 6 AI Generated Hairstyles */}
           <div className="flex-1">
             <div className="grid grid-cols-3 gap-2">
-              {HAIRSTYLES.map((style, idx) => {
-                const generated = generatedImages.find(g => g.styleIndex === idx);
-                const hasImage = generated?.image;
+              {generatedStyles.map((style) => {
+                const hasImage = style.image;
                 
                 return (
                   <div 
-                    key={idx}
-                    className={`bg-white rounded-lg overflow-hidden shadow cursor-pointer transition-all hover:shadow-md ${selectedStyle?.index === idx ? 'ring-2 ring-teal-500' : ''} ${!hasImage ? 'opacity-60' : ''}`}
-                    onClick={() => hasImage && setSelectedStyle({ index: idx })}
+                    key={style.styleIndex}
+                    className={`bg-white rounded-lg overflow-hidden shadow cursor-pointer transition-all hover:shadow-md ${selectedStyle?.index === style.styleIndex ? 'ring-2 ring-teal-500' : ''} ${!hasImage ? 'opacity-60' : ''}`}
+                    onClick={() => hasImage && setSelectedStyle({ index: style.styleIndex })}
                   >
                     <div className="aspect-square relative">
                       {hasImage ? (
                         <img 
-                          src={generated.image!} 
-                          alt={style.name} 
+                          src={style.image!} 
+                          alt={style.styleName} 
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -531,14 +558,16 @@ export default function StyleVision() {
                         </div>
                       )}
 
-                      {/* Match score */}
-                      <div className="absolute top-1 right-1 px-1 py-0.5 bg-teal-500 text-white text-[9px] font-bold rounded">
-                        {style.matchScore}%
-                      </div>
+                      {/* Trend source badge */}
+                      {style.trendSource && (
+                        <div className="absolute top-1 right-1 px-1 py-0.5 bg-teal-500 text-white text-[8px] font-bold rounded">
+                          {style.trendSource.split(' ')[0]}
+                        </div>
+                      )}
 
-                      {/* Name */}
+                      {/* Name - AI Generated */}
                       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent py-1 px-1.5">
-                        <p className="text-white text-[10px] font-semibold truncate">{style.name}</p>
+                        <p className="text-white text-[10px] font-semibold truncate">{style.styleName}</p>
                       </div>
                     </div>
                   </div>
@@ -548,40 +577,60 @@ export default function StyleVision() {
           </div>
         </div>
 
-        {/* Selected Style Details */}
-        {selectedStyle !== null && (
+        {/* Selected Style Details - AI Generated */}
+        {selectedStyleData && (
           <div className="mt-3 bg-white rounded-xl shadow border p-3">
             <div className="flex items-start justify-between mb-2">
               <div>
-                <h3 className="text-base font-bold text-gray-900">{HAIRSTYLES[selectedStyle.index].name}</h3>
-                <p className="text-xs text-gray-600">{HAIRSTYLES[selectedStyle.index].description}</p>
+                <h3 className="text-base font-bold text-gray-900">{selectedStyleData.styleName}</h3>
+                {selectedStyleData.description && (
+                  <p className="text-xs text-gray-600">{selectedStyleData.description}</p>
+                )}
               </div>
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-teal-100 rounded">
-                <Star className="w-3 h-3 text-teal-600" />
-                <span className="text-xs font-bold text-teal-700">{HAIRSTYLES[selectedStyle.index].matchScore}%</span>
-              </div>
+              {selectedStyleData.trendSource && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-teal-100 rounded">
+                  <TrendingUp className="w-3 h-3 text-teal-600" />
+                  <span className="text-xs font-bold text-teal-700">{selectedStyleData.trendSource}</span>
+                </div>
+              )}
             </div>
 
             <div className="grid md:grid-cols-2 gap-3">
-              <div className="bg-purple-50 rounded-lg p-2">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Scissors className="w-3.5 h-3.5 text-purple-600" />
-                  <h4 className="font-semibold text-purple-900 text-xs">Barber Instructions</h4>
+              {/* Why It Works - AI Reasoning */}
+              {selectedStyleData.geometricReasoning && (
+                <div className="bg-purple-50 rounded-lg p-2">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    <h4 className="font-semibold text-purple-900 text-xs">Why This Suits You</h4>
+                  </div>
+                  <p className="text-xs text-purple-800">{selectedStyleData.geometricReasoning}</p>
                 </div>
-                <p className="text-xs text-purple-800">{HAIRSTYLES[selectedStyle.index].instructions}</p>
-              </div>
+              )}
 
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-gray-500" />
-                  <span className="text-xs"><strong>Maintenance:</strong> {HAIRSTYLES[selectedStyle.index].maintenance}</span>
+              {/* Celebrity Reference */}
+              {selectedStyleData.celebrityReference && (
+                <div className="bg-teal-50 rounded-lg p-2">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <User className="w-3.5 h-3.5 text-teal-600" />
+                    <h4 className="font-semibold text-teal-900 text-xs">Celebrity Reference</h4>
+                  </div>
+                  <p className="text-xs text-teal-800">{selectedStyleData.celebrityReference}</p>
                 </div>
-                <div className="flex items-start gap-1.5">
-                  <Star className="w-3.5 h-3.5 text-gray-500 mt-0.5" />
-                  <span className="text-xs"><strong>Best For:</strong> {HAIRSTYLES[selectedStyle.index].bestFor}</span>
-                </div>
-              </div>
+              )}
             </div>
+
+            {/* Stylist Tip */}
+            {selectedStyleData.stylistTip && (
+              <div className="mt-2 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg p-2 border border-amber-200">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Quote className="w-3.5 h-3.5 text-amber-600" />
+                  <h4 className="font-semibold text-amber-900 text-xs">
+                    Tip from {selectedStyleData.stylistTip.stylist_name}
+                  </h4>
+                </div>
+                <p className="text-xs text-amber-800 italic">&ldquo;{selectedStyleData.stylistTip.tip}&rdquo;</p>
+              </div>
+            )}
 
             <button 
               onClick={() => setSelectedStyle(null)}
@@ -592,9 +641,9 @@ export default function StyleVision() {
           </div>
         )}
 
-        {!selectedStyle && generatedImages.some(g => g.image) && (
+        {!selectedStyle && generatedStyles.some(g => g.image) && (
           <p className="text-center text-gray-500 text-xs mt-3">
-            Tap any hairstyle to see barber instructions
+            Tap any hairstyle to see AI analysis and stylist tips
           </p>
         )}
       </div>
