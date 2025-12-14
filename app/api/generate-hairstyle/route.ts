@@ -16,9 +16,9 @@ async function generateAllHairstyles(userPhotoBase64: string): Promise<string | 
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   
   try {
-    // Use the same approach as Gemini app - single prompt for all 6 styles
+    // Use Gemini 3 Pro Image Preview (Nano Banana Pro) - same as Gemini mobile app
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -32,7 +32,7 @@ async function generateAllHairstyles(userPhotoBase64: string): Promise<string | 
                 }
               },
               {
-                text: `Please create 6 images showing this exact same person with 6 different hairstyles:
+                text: `please create 6 images for my new hairstyle:
 
 1. Classic Side Part - hair neatly combed to one side with a clean part line
 2. Textured Crop - short faded sides with textured messy top
@@ -41,7 +41,7 @@ async function generateAllHairstyles(userPhotoBase64: string): Promise<string | 
 5. Crew Cut - short all around military style buzz cut
 6. Spiky Textured - hair styled upward in spikes
 
-IMPORTANT: Keep the SAME person's face, skin tone, facial features, and expression in ALL 6 images. Only change the hairstyle. Create a 2x3 grid or 6 separate images showing each hairstyle on this person.`
+Show me how I would look with each hairstyle. Create a grid showing all 6 styles.`
               }
             ]
           }],
@@ -54,14 +54,14 @@ IMPORTANT: Keep the SAME person's face, skin tone, facial features, and expressi
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Gemini API error:`, errorText);
+      console.error(`Gemini 3 Pro Image API error:`, errorText);
       return null;
     }
 
     const data = await response.json();
-    console.log('Gemini response structure:', JSON.stringify(data).substring(0, 1000));
+    console.log('Gemini 3 Pro Image response:', JSON.stringify(data).substring(0, 500));
     
-    // Extract image(s) from response
+    // Extract image from response
     if (data.candidates?.[0]?.content?.parts) {
       for (const part of data.candidates[0].content.parts) {
         if (part.inlineData?.data) {
@@ -93,8 +93,9 @@ async function generateSingleHairstyle(userPhotoBase64: string, styleIndex: numb
   };
   
   try {
+    // Use Gemini 3 Pro Image Preview (Nano Banana Pro)
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -108,7 +109,7 @@ async function generateSingleHairstyle(userPhotoBase64: string, styleIndex: numb
                 }
               },
               {
-                text: `Create 1 image of this exact same person with a ${styleDescriptions[styleIndex]}. Keep the same face, skin tone, expression, and all facial features. Only change the hairstyle to ${styleName}.`
+                text: `Create 1 image showing me with a ${styleDescriptions[styleIndex]}. Show how I would look with ${styleName} hairstyle.`
               }
             ]
           }],
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
     // Mode 'grid' = single image with all 6 styles (like Gemini app)
     // Mode 'individual' or default = generate each style separately
     if (mode === 'grid') {
-      console.log('Generating grid of all 6 hairstyles...');
+      console.log('Generating grid of all 6 hairstyles with Gemini 3 Pro Image...');
       const gridImage = await generateAllHairstyles(userPhoto);
       
       return NextResponse.json({
@@ -178,7 +179,7 @@ export async function POST(request: NextRequest) {
     const results = [];
 
     for (const idx of stylesToGenerate) {
-      console.log(`Generating style ${idx}: ${HAIRSTYLE_NAMES[idx]}`);
+      console.log(`Generating style ${idx}: ${HAIRSTYLE_NAMES[idx]} with Gemini 3 Pro Image...`);
       
       const imageUrl = await generateSingleHairstyle(userPhoto, idx);
       
