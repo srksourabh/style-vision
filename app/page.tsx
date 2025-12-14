@@ -1,76 +1,52 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, ChevronUp, X, AlertCircle } from 'lucide-react';
-import { analyzeWithGemini, analyzeColorWithGemini, HairstyleRecommendation, ColorRecommendation } from '@/utils/geminiService';
+import { Camera, Sparkles, Palette, Heart, RefreshCw, ChevronDown, ChevronUp, X, AlertCircle, Wand2, Loader2 } from 'lucide-react';
 
-// Logo colors from the actual StyleVision logo
-const logoColors = {
-  purple: '#a855f7',
-  purpleDark: '#7c3aed',
-  teal: '#14b8a6',
-  tealLight: '#2dd4bf',
-  navy: '#1e1b4b',
-  white: '#ffffff',
-  gray: {
-    50: '#f9fafb',
-    100: '#f3f4f6',
-    200: '#e5e7eb',
-    300: '#d1d5db',
-    700: '#374151',
-    800: '#1f2937',
-    900: '#111827'
-  }
-};
+// Types for virtual try-on
+interface HairstyleRecommendation {
+  name: string;
+  description: string;
+  suitabilityScore: number;
+  maintenanceLevel: string;
+  stylingTips: string[];
+  bestFor: string[];
+  cuttingTechnique?: string;
+  lengthChange?: string;
+  visualDescription?: string;
+  generatedImage?: string | null;
+  generationSuccess?: boolean;
+}
 
-// Real hairstyle images from Unsplash (free to use)
-const hairstyleImageDatabase: Record<string, string[]> = {
-  'Layered Lob': [
-    'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1595959183082-7b570b7e1dfa?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1519699047748-de8e457a634e?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1554519515-242161756769?w=400&h=400&fit=crop&crop=face',
-  ],
-  'Textured Pixie': [
-    'https://images.unsplash.com/photo-1500917293891-ef795e70e1f6?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1552058544-f2b08422138a?w=400&h=400&fit=crop&crop=face',
-  ],
-  'Classic Bob': [
-    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1509967419530-da38b4704bc6?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1496440737103-cd596325d314?w=400&h=400&fit=crop&crop=face',
-  ],
-  'default': [
-    'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1595959183082-7b570b7e1dfa?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=400&fit=crop&crop=face',
-    'https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?w=400&h=400&fit=crop&crop=face',
-  ]
-};
+interface ColorRecommendation {
+  name: string;
+  hexCode: string;
+  description: string;
+  suitabilityScore: number;
+  maintenanceLevel: string;
+  bestFor: string[];
+  technique?: string;
+  generatedImage?: string | null;
+}
 
-// Get hairstyle images based on style name
-const getHairstyleImages = (styleName: string): string[] => {
-  // Check if we have specific images for this style
-  for (const [key, images] of Object.entries(hairstyleImageDatabase)) {
-    if (styleName.toLowerCase().includes(key.toLowerCase()) || 
-        key.toLowerCase().includes(styleName.toLowerCase())) {
-      return images;
-    }
-  }
-  // Return default images
-  return hairstyleImageDatabase['default'];
-};
+interface FaceAnalysis {
+  faceShape: string;
+  faceAnalysis: {
+    jawline: string;
+    forehead: string;
+    cheekbones: string;
+    faceRatio: string;
+    bestFeatures?: string;
+    areasToBalance?: string;
+  };
+  currentHair: {
+    estimatedLength: string;
+    texture: string;
+    density?: string;
+    currentStyle?: string;
+  };
+  expertTip: string;
+}
 
 export default function StyleVision() {
   const [currentView, setCurrentView] = useState<'landing' | 'camera'>('landing');
@@ -80,6 +56,8 @@ export default function StyleVision() {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<string>('');
+  const [faceAnalysis, setFaceAnalysis] = useState<FaceAnalysis | null>(null);
   const [hairResults, setHairResults] = useState<HairstyleRecommendation[] | null>(null);
   const [colorResults, setColorResults] = useState<ColorRecommendation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,12 +65,10 @@ export default function StyleVision() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isUsingFallback, setIsUsingFallback] = useState(false);
   
   // Image viewer state
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerImages, setViewerImages] = useState<string[]>([]);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [viewerImage, setViewerImage] = useState<string>('');
   const [selectedStyle, setSelectedStyle] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -100,7 +76,7 @@ export default function StyleVision() {
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Face detection using skin tone analysis
+  // Face detection
   const detectFace = useCallback((): boolean => {
     if (!videoRef.current || !canvasRef.current) return false;
     
@@ -127,9 +103,7 @@ export default function StyleVision() {
         const dy = (y - centerY) / radiusY;
         if (dx * dx + dy * dy <= 1) {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
-          const r = pixel[0];
-          const g = pixel[1];
-          const b = pixel[2];
+          const r = pixel[0], g = pixel[1], b = pixel[2];
           if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) {
             skinPixels++;
           }
@@ -142,37 +116,26 @@ export default function StyleVision() {
   }, []);
 
   const startFaceDetection = useCallback(() => {
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-    }
-    
+    if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
     detectionIntervalRef.current = setInterval(() => {
-      const detected = detectFace();
-      setFaceDetected(detected);
+      setFaceDetected(detectFace());
     }, 200);
   }, [detectFace]);
 
-  // Effect to start countdown when face is detected
   useEffect(() => {
     if (faceDetected && countdown === null && !capturedPhoto && isCameraReady) {
       setCountdown(3);
     }
   }, [faceDetected, countdown, capturedPhoto, isCameraReady]);
 
-  // Countdown effect
   useEffect(() => {
     if (countdown === null) return;
-    
     if (countdown <= 0) {
       capturePhotoNow();
       setCountdown(null);
       return;
     }
-
-    const timer = setTimeout(() => {
-      setCountdown(prev => prev !== null ? prev - 1 : null);
-    }, 1000);
-
+    const timer = setTimeout(() => setCountdown(prev => prev !== null ? prev - 1 : null), 1000);
     return () => clearTimeout(timer);
   }, [countdown]);
 
@@ -190,38 +153,27 @@ export default function StyleVision() {
       ctx.scale(-1, 1);
     }
     ctx.drawImage(video, 0, 0);
-    const photoData = canvas.toDataURL('image/jpeg', 0.95);
-    setCapturedPhoto(photoData);
+    setCapturedPhoto(canvas.toDataURL('image/jpeg', 0.95));
     stopCamera();
   }, [facingMode]);
 
   const stopCamera = useCallback(() => {
-    console.log('Stopping camera...');
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
       detectionIntervalRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-      });
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    if (videoRef.current) videoRef.current.srcObject = null;
     setIsCameraActive(false);
     setIsCameraReady(false);
     setFaceDetected(false);
   }, []);
 
   const initializeCamera = useCallback(async () => {
-    if (!videoRef.current) {
-      console.log('Video ref not ready yet');
-      return;
-    }
-
-    console.log('Initializing camera stream...');
+    if (!videoRef.current) return;
     setCameraError(null);
 
     try {
@@ -229,61 +181,34 @@ export default function StyleVision() {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
 
-      const constraints: MediaStreamConstraints = {
-        video: { 
-          facingMode: facingMode, 
-          width: { ideal: 1280 }, 
-          height: { ideal: 720 } 
-        },
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      });
       streamRef.current = stream;
       
       const video = videoRef.current;
-      if (!video) {
-        console.error('Video element disappeared');
-        return;
-      }
-
+      if (!video) return;
       video.srcObject = stream;
 
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Video metadata load timeout'));
-        }, 10000);
-
-        video.onloadedmetadata = () => {
-          clearTimeout(timeout);
-          resolve();
-        };
-
-        video.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Video element error'));
-        };
+        const timeout = setTimeout(() => reject(new Error('Video load timeout')), 10000);
+        video.onloadedmetadata = () => { clearTimeout(timeout); resolve(); };
+        video.onerror = () => { clearTimeout(timeout); reject(new Error('Video error')); };
       });
 
       await video.play();
       setIsCameraReady(true);
-      
-      setTimeout(() => {
-        startFaceDetection();
-      }, 500);
+      setTimeout(() => startFaceDetection(), 500);
 
     } catch (err: unknown) {
       const error = err as { name?: string; message?: string };
-      console.error('Camera initialization error:', err);
-      
       if (error.name === 'NotAllowedError') {
-        setCameraError('Camera access denied. Please allow camera permissions in your browser settings and refresh the page.');
+        setCameraError('Camera access denied. Please allow camera permissions.');
       } else if (error.name === 'NotFoundError') {
-        setCameraError('No camera found. Please connect a camera and try again.');
-      } else if (error.name === 'NotReadableError') {
-        setCameraError('Camera is in use by another application. Please close other apps using the camera.');
+        setCameraError('No camera found.');
       } else {
-        setCameraError(`Camera error: ${error.message || 'Unknown error. Please refresh and try again.'}`);
+        setCameraError(`Camera error: ${error.message || 'Unknown error'}`);
       }
       setIsCameraActive(false);
       setIsCameraReady(false);
@@ -296,73 +221,49 @@ export default function StyleVision() {
     }
   }, [isCameraActive, isCameraReady, initializeCamera]);
 
-  const startCamera = () => {
-    setCameraError(null);
-    setIsCameraActive(true);
-  };
-
-  const switchCamera = () => {
-    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
-    setFacingMode(newFacingMode);
-    if (isCameraActive) {
-      setIsCameraReady(false);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (isCameraActive && !isCameraReady && !streamRef.current) {
-      const timer = setTimeout(() => {
-        initializeCamera();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [facingMode, isCameraActive, isCameraReady, initializeCamera]);
-
-  const capturePhoto = () => {
-    capturePhotoNow();
-  };
-
-  const retakePhoto = () => {
-    setCapturedPhoto(null);
-    setHairResults(null);
-    setColorResults(null);
-    setError(null);
-    setCountdown(null);
-    setIsUsingFallback(false);
-    setIsCameraActive(true);
-    setIsCameraReady(false);
-  };
-
+  // Virtual Try-On Analysis
   const analyzePhoto = async () => {
     if (!capturedPhoto) return;
     
     setIsAnalyzing(true);
     setError(null);
-    setIsUsingFallback(false);
+    setAnalysisProgress('Analyzing your facial features...');
     
     try {
-      if (analysisMode === 'hair' || analysisMode === 'bridal') {
-        const result = await analyzeWithGemini(capturedPhoto);
-        setHairResults(result.recommendations);
-        // Check if using fallback (API not configured)
-        if (result.recommendations[0]?.name === 'Layered Lob') {
-          setIsUsingFallback(true);
-        }
-      } else if (analysisMode === 'color') {
-        const result = await analyzeColorWithGemini(capturedPhoto);
-        setColorResults(result.recommendations);
-        if (result.recommendations[0]?.colorName === 'Warm Honey Blonde') {
-          setIsUsingFallback(true);
-        }
+      const response = await fetch('/api/virtual-tryon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userPhoto: capturedPhoto,
+          analysisType: analysisMode === 'color' ? 'color' : 'hair'
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Analysis failed');
       }
+
+      if (result.success) {
+        setFaceAnalysis(result.analysis);
+        
+        if (analysisMode === 'color') {
+          setColorResults(result.recommendations);
+        } else {
+          setHairResults(result.recommendations);
+        }
+        
+        setAnalysisProgress('');
+      } else {
+        throw new Error(result.error || 'Analysis failed');
+      }
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed. Please try again.');
     } finally {
       setIsAnalyzing(false);
+      setAnalysisProgress('');
     }
   };
 
@@ -372,8 +273,8 @@ export default function StyleVision() {
     setCapturedPhoto(null);
     setHairResults(null);
     setColorResults(null);
+    setFaceAnalysis(null);
     setError(null);
-    setIsUsingFallback(false);
   };
 
   const goBack = () => {
@@ -383,35 +284,29 @@ export default function StyleVision() {
     setCapturedPhoto(null);
     setHairResults(null);
     setColorResults(null);
+    setFaceAnalysis(null);
     setError(null);
-    setIsUsingFallback(false);
   };
 
-  const openImageViewer = (images: string[], styleTitle: string, startIndex: number = 0) => {
-    setViewerImages(images);
+  const retakePhoto = () => {
+    setCapturedPhoto(null);
+    setHairResults(null);
+    setColorResults(null);
+    setFaceAnalysis(null);
+    setError(null);
+    setCountdown(null);
+    setIsCameraActive(true);
+    setIsCameraReady(false);
+  };
+
+  const openImageViewer = (image: string, styleTitle: string) => {
+    setViewerImage(image);
     setSelectedStyle(styleTitle);
-    setCurrentImageIndex(startIndex);
     setViewerOpen(true);
   };
 
-  const closeImageViewer = () => {
-    setViewerOpen(false);
-    setViewerImages([]);
-    setCurrentImageIndex(0);
-  };
-
-  const nextImage = () => {
-    setCurrentImageIndex((prev) => (prev + 1) % viewerImages.length);
-  };
-
-  const previousImage = () => {
-    setCurrentImageIndex((prev) => (prev - 1 + viewerImages.length) % viewerImages.length);
-  };
-
   useEffect(() => {
-    return () => {
-      stopCamera();
-    };
+    return () => stopCamera();
   }, [stopCamera]);
 
   const getScoreColor = (score: number) => {
@@ -435,7 +330,7 @@ export default function StyleVision() {
             <div className="flex items-center gap-3">
               <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-12 h-12 rounded-lg" />
               <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-                StyleVision
+                StyleVision AI
               </h1>
             </div>
             <button className="px-6 py-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-lg transition-shadow">
@@ -445,12 +340,18 @@ export default function StyleVision() {
         </header>
 
         <section className="max-w-7xl mx-auto px-4 py-20 text-center">
-          <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-48 h-48 mx-auto mb-8 rounded-2xl shadow-2xl" />
+          <div className="mb-8">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-100 to-teal-100 rounded-full mb-6">
+              <Wand2 className="w-5 h-5 text-purple-600" />
+              <span className="text-sm font-semibold text-purple-700">AI-Powered Virtual Try-On</span>
+            </div>
+          </div>
+          
           <h2 className="text-5xl font-bold mb-6 bg-gradient-to-r from-purple-600 via-teal-500 to-purple-600 bg-clip-text text-transparent">
-            AI-Powered Beauty Analysis
+            See Yourself with New Hairstyles
           </h2>
           <p className="text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
-            Discover your perfect hairstyle, color palette, and bridal look with cutting-edge AI technology
+            Take a photo and our AI will generate realistic previews of YOU with different haircuts based on your face shape and features
           </p>
 
           <div className="flex flex-wrap justify-center gap-4 mb-16">
@@ -459,14 +360,14 @@ export default function StyleVision() {
               className="group px-8 py-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl font-semibold hover:shadow-xl transition-all transform hover:-translate-y-1 flex items-center gap-2"
             >
               <Sparkles className="w-5 h-5" />
-              Hair Analysis
+              Hairstyle Try-On
             </button>
             <button
               onClick={() => startAnalysis('color')}
               className="group px-8 py-4 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all transform hover:-translate-y-1 flex items-center gap-2"
             >
               <Palette className="w-5 h-5" />
-              Color Analysis
+              Hair Color Try-On
             </button>
             <button
               onClick={() => startAnalysis('bridal')}
@@ -482,35 +383,29 @@ export default function StyleVision() {
               <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-purple-700 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Camera className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Live Camera Analysis</h3>
-              <p className="text-gray-600">Real-time face detection with instant AI-powered recommendations</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">1. Take Your Photo</h3>
+              <p className="text-gray-600">Our AI detects your face and analyzes your unique features</p>
             </div>
             <div className="p-6 bg-gradient-to-br from-teal-50 to-white rounded-xl border border-teal-100">
               <div className="w-16 h-16 bg-gradient-to-br from-teal-500 to-teal-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-8 h-8 text-white" />
+                <Wand2 className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">AI-Powered Insights</h3>
-              <p className="text-gray-600">Gemini 2.0 Flash delivers professional-grade beauty analysis</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">2. AI Generates Styles</h3>
+              <p className="text-gray-600">See realistic previews of YOUR face with different hairstyles</p>
             </div>
             <div className="p-6 bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100">
               <div className="w-16 h-16 bg-gradient-to-br from-purple-600 via-teal-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Heart className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Personalized Results</h3>
-              <p className="text-gray-600">Tailored recommendations based on your unique features</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">3. Find Your Look</h3>
+              <p className="text-gray-600">Choose the perfect style and show your stylist</p>
             </div>
           </div>
         </section>
 
         <footer className="bg-gradient-to-r from-gray-900 to-gray-800 text-white py-12 mt-20">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex items-center justify-center gap-3 mb-6">
-              <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-10 h-10 rounded-lg" />
-              <span className="text-xl font-bold">StyleVision</span>
-            </div>
-            <p className="text-center text-gray-400">
-              © 2025 StyleVision. AI-Powered Beauty Analysis Platform.
-            </p>
+          <div className="max-w-7xl mx-auto px-4 text-center">
+            <p className="text-gray-400">© 2025 StyleVision AI - Virtual Hairstyle Try-On</p>
           </div>
         </footer>
       </div>
@@ -522,17 +417,14 @@ export default function StyleVision() {
     <div className="min-h-screen bg-white">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button
-            onClick={goBack}
-            className="flex items-center gap-2 text-gray-700 hover:text-gray-900"
-          >
+          <button onClick={goBack} className="flex items-center gap-2 text-gray-700 hover:text-gray-900">
             <ChevronDown className="w-5 h-5 rotate-90" />
             <span className="font-semibold">Back</span>
           </button>
           <div className="flex items-center gap-2">
             <img src="/StyleVision_Logo.jpg" alt="StyleVision" className="w-10 h-10 rounded-lg" />
             <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-teal-500 bg-clip-text text-transparent">
-              {analysisMode === 'hair' ? 'Hair Analysis' : analysisMode === 'color' ? 'Color Analysis' : 'Bridal Studio'}
+              {analysisMode === 'hair' ? 'Hairstyle Try-On' : analysisMode === 'color' ? 'Color Try-On' : 'Bridal Studio'}
             </h1>
           </div>
           <div className="w-20" />
@@ -550,9 +442,12 @@ export default function StyleVision() {
                     <h3 className="text-lg font-bold text-gray-900">Position Your Face</h3>
                     {isCameraReady && (
                       <button
-                        onClick={switchCamera}
-                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-                        title="Switch Camera"
+                        onClick={() => {
+                          setFacingMode(f => f === 'user' ? 'environment' : 'user');
+                          setIsCameraReady(false);
+                          streamRef.current?.getTracks().forEach(t => t.stop());
+                        }}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full"
                       >
                         <RefreshCw className="w-5 h-5 text-gray-700" />
                       </button>
@@ -583,12 +478,9 @@ export default function StyleVision() {
                             <div className="absolute inset-0 pointer-events-none">
                               <svg className="w-full h-full">
                                 <ellipse
-                                  cx="50%"
-                                  cy="40%"
-                                  rx="35%"
-                                  ry="30%"
+                                  cx="50%" cy="40%" rx="35%" ry="30%"
                                   fill="none"
-                                  stroke={faceDetected ? logoColors.teal : logoColors.purple}
+                                  stroke={faceDetected ? '#14b8a6' : '#a855f7'}
                                   strokeWidth="3"
                                   strokeDasharray="10,5"
                                   opacity="0.8"
@@ -598,15 +490,13 @@ export default function StyleVision() {
 
                             <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/70 backdrop-blur-sm rounded-full">
                               <p className="text-white text-sm font-semibold">
-                                {faceDetected ? '✓ Face Detected - Hold still!' : 'Position your face in the oval'}
+                                {faceDetected ? '✓ Face Detected' : 'Position face in oval'}
                               </p>
                             </div>
 
                             {countdown !== null && (
                               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                                <div className="text-8xl font-bold text-white animate-pulse">
-                                  {countdown}
-                                </div>
+                                <div className="text-8xl font-bold text-white animate-pulse">{countdown}</div>
                               </div>
                             )}
                           </>
@@ -616,14 +506,12 @@ export default function StyleVision() {
                       <div className="w-full h-full flex flex-col items-center justify-center p-8">
                         <Camera className="w-16 h-16 text-gray-500 mb-4" />
                         <button
-                          onClick={startCamera}
-                          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-lg transition-shadow"
+                          onClick={() => setIsCameraActive(true)}
+                          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-lg"
                         >
                           Start Camera
                         </button>
-                        {cameraError && (
-                          <p className="mt-4 text-sm text-red-400 text-center max-w-xs">{cameraError}</p>
-                        )}
+                        {cameraError && <p className="mt-4 text-sm text-red-400 text-center">{cameraError}</p>}
                       </div>
                     )}
                   </div>
@@ -631,8 +519,8 @@ export default function StyleVision() {
                   {isCameraReady && (
                     <div className="flex justify-center mt-6">
                       <button
-                        onClick={capturePhoto}
-                        className="px-8 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-xl transition-all flex items-center gap-2"
+                        onClick={capturePhotoNow}
+                        className="px-8 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-full font-semibold hover:shadow-xl flex items-center gap-2"
                       >
                         <Camera className="w-5 h-5" />
                         Capture Now
@@ -650,7 +538,7 @@ export default function StyleVision() {
                   <div className="flex gap-4">
                     <button
                       onClick={retakePhoto}
-                      className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold flex items-center justify-center gap-2"
                     >
                       <RefreshCw className="w-5 h-5" />
                       Retake
@@ -658,17 +546,17 @@ export default function StyleVision() {
                     <button
                       onClick={analyzePhoto}
                       disabled={isAnalyzing}
-                      className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold hover:shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {isAnalyzing ? (
                         <>
-                          <RefreshCw className="w-5 h-5 animate-spin" />
-                          Analyzing...
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Generating...
                         </>
                       ) : (
                         <>
-                          <Sparkles className="w-5 h-5" />
-                          Analyze
+                          <Wand2 className="w-5 h-5" />
+                          Generate Styles
                         </>
                       )}
                     </button>
@@ -677,118 +565,165 @@ export default function StyleVision() {
               )}
             </div>
 
+            {/* Face Analysis Results */}
+            {faceAnalysis && (
+              <div className="bg-gradient-to-br from-purple-50 to-teal-50 rounded-2xl border border-purple-200 p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  Your Face Analysis
+                </h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500">Face Shape</p>
+                    <p className="font-semibold text-gray-900">{faceAnalysis.faceShape}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Current Hair</p>
+                    <p className="font-semibold text-gray-900">{faceAnalysis.currentHair?.estimatedLength} {faceAnalysis.currentHair?.texture}</p>
+                  </div>
+                  {faceAnalysis.faceAnalysis?.bestFeatures && (
+                    <div className="col-span-2">
+                      <p className="text-gray-500">Best Features</p>
+                      <p className="font-semibold text-gray-900">{faceAnalysis.faceAnalysis.bestFeatures}</p>
+                    </div>
+                  )}
+                </div>
+                {faceAnalysis.expertTip && (
+                  <div className="mt-4 p-3 bg-white/60 rounded-lg">
+                    <p className="text-sm text-purple-800"><strong>Expert Tip:</strong> {faceAnalysis.expertTip}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <canvas ref={canvasRef} className="hidden" />
           </div>
 
           {/* Results Section */}
           <div>
-            {isUsingFallback && (hairResults || colorResults) && (
-              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-amber-800 font-semibold text-sm">Demo Mode</p>
-                  <p className="text-amber-700 text-sm">
-                    Showing sample recommendations. For personalized AI analysis, please configure your Gemini API key in Vercel environment variables.
-                  </p>
-                </div>
+            {isAnalyzing && (
+              <div className="text-center py-12">
+                <Loader2 className="w-16 h-16 mx-auto mb-4 text-purple-600 animate-spin" />
+                <p className="text-lg font-semibold text-gray-900">{analysisProgress || 'Generating your personalized styles...'}</p>
+                <p className="text-sm text-gray-500 mt-2">This may take a moment as AI creates images of you with each hairstyle</p>
               </div>
             )}
 
-            {(hairResults || colorResults) && (
+            {hairResults && hairResults.length > 0 && (
               <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {isUsingFallback ? 'Sample Recommendations' : 'Your Personalized Recommendations'}
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <Wand2 className="w-6 h-6 text-purple-600" />
+                  Your Personalized Styles
                 </h2>
 
-                {hairResults?.map((rec, idx) => {
-                  const styleImages = getHairstyleImages(rec.name);
-                  
-                  return (
-                    <div key={idx} className="bg-white rounded-2xl border-2 border-gray-200 p-6 hover:border-purple-300 transition-all">
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h3 className="text-xl font-bold text-gray-900">{rec.name}</h3>
-                          <p className="text-sm text-gray-500">{rec.description}</p>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.suitabilityScore)}`}>
-                          {Math.round(rec.suitabilityScore * 100)}%
-                        </div>
+                {hairResults.map((rec, idx) => (
+                  <div key={idx} className="bg-white rounded-2xl border-2 border-gray-200 p-6 hover:border-purple-300 transition-all">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-gray-900">{rec.name}</h3>
+                        <p className="text-sm text-gray-500 mt-1">{rec.description}</p>
                       </div>
-
-                      <div className="grid grid-cols-3 gap-2 mb-4">
-                        {styleImages.slice(0, 6).map((imgSrc, imgIdx) => (
-                          <button
-                            key={imgIdx}
-                            onClick={() => openImageViewer(styleImages, rec.name, imgIdx)}
-                            className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden group cursor-pointer hover:ring-2 hover:ring-purple-500 transition-all"
-                          >
-                            <img
-                              src={imgSrc}
-                              alt={`${rec.name} style ${imgIdx + 1}`}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                              <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs font-semibold">
-                                View
-                              </span>
-                            </div>
-                            {imgIdx === 0 && (
-                              <div className="absolute top-1 left-1 px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full font-semibold">
-                                Main
-                              </div>
-                            )}
-                          </button>
-                        ))}
+                      <div className={`ml-4 px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(rec.suitabilityScore)}`}>
+                        {Math.round(rec.suitabilityScore * 100)}%
                       </div>
+                    </div>
 
-                      {expandedCard === idx && (
-                        <div className="space-y-3 pt-4 border-t border-gray-100">
-                          <div>
-                            <p className="text-sm font-semibold text-gray-700 mb-1">Best For</p>
-                            <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                              {rec.bestFor.map((item, i) => <li key={i}>{item}</li>)}
-                            </ul>
+                    {/* AI Generated Image */}
+                    <div className="mb-4">
+                      {rec.generatedImage ? (
+                        <button
+                          onClick={() => openImageViewer(rec.generatedImage!, rec.name)}
+                          className="relative w-full aspect-[4/3] bg-gray-100 rounded-xl overflow-hidden group cursor-pointer hover:ring-2 hover:ring-purple-500"
+                        >
+                          <img
+                            src={rec.generatedImage}
+                            alt={`You with ${rec.name}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-4">
+                            <span className="text-white font-semibold">Click to enlarge</span>
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-700 mb-1">Styling Tips</p>
-                            <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                              {rec.stylingTips.map((tip, i) => <li key={i}>{tip}</li>)}
-                            </ul>
+                          <div className="absolute top-2 left-2 px-2 py-1 bg-purple-600 text-white text-xs rounded-full font-semibold flex items-center gap-1">
+                            <Wand2 className="w-3 h-3" />
+                            AI Generated
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-700">Maintenance:</span>
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${getMaintenanceColor(rec.maintenanceLevel)}`}>
-                              {rec.maintenanceLevel}
-                            </span>
+                        </button>
+                      ) : (
+                        <div className="w-full aspect-[4/3] bg-gray-100 rounded-xl flex items-center justify-center">
+                          <div className="text-center text-gray-500">
+                            <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">Image generation unavailable</p>
                           </div>
                         </div>
                       )}
-                      
-                      <button
-                        onClick={() => setExpandedCard(expandedCard === idx ? null : idx)}
-                        className="mt-4 text-purple-600 font-semibold text-sm hover:text-purple-700 transition-colors flex items-center gap-1"
-                      >
-                        {expandedCard === idx ? (
-                          <>Less Details <ChevronUp className="w-4 h-4" /></>
-                        ) : (
-                          <>More Details <ChevronDown className="w-4 h-4" /></>
-                        )}
-                      </button>
                     </div>
-                  );
-                })}
 
-                {colorResults?.map((color, idx) => (
+                    {rec.lengthChange && (
+                      <p className="text-sm text-purple-700 mb-3 font-medium">✂️ {rec.lengthChange}</p>
+                    )}
+
+                    {expandedCard === idx && (
+                      <div className="space-y-3 pt-4 border-t border-gray-100">
+                        {rec.cuttingTechnique && (
+                          <div>
+                            <p className="text-sm font-semibold text-gray-700 mb-1">Cutting Technique</p>
+                            <p className="text-sm text-gray-600">{rec.cuttingTechnique}</p>
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700 mb-1">Best For</p>
+                          <div className="flex flex-wrap gap-2">
+                            {rec.bestFor?.map((item, i) => (
+                              <span key={i} className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">{item}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700 mb-1">Styling Tips</p>
+                          <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+                            {rec.stylingTips?.map((tip, i) => <li key={i}>{tip}</li>)}
+                          </ul>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-gray-700">Maintenance:</span>
+                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${getMaintenanceColor(rec.maintenanceLevel)}`}>
+                            {rec.maintenanceLevel}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <button
+                      onClick={() => setExpandedCard(expandedCard === idx ? null : idx)}
+                      className="mt-4 text-purple-600 font-semibold text-sm hover:text-purple-700 flex items-center gap-1"
+                    >
+                      {expandedCard === idx ? (
+                        <>Less Details <ChevronUp className="w-4 h-4" /></>
+                      ) : (
+                        <>More Details <ChevronDown className="w-4 h-4" /></>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {colorResults && colorResults.length > 0 && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-900">Your Color Recommendations</h2>
+                {colorResults.map((color, idx) => (
                   <div key={idx} className="bg-white rounded-2xl border-2 border-gray-200 p-6">
                     <div className="flex items-start gap-4">
                       <div
-                        className="w-16 h-16 rounded-lg shadow-lg flex-shrink-0"
+                        className="w-20 h-20 rounded-lg shadow-lg flex-shrink-0"
                         style={{ backgroundColor: color.hexCode }}
                       />
                       <div className="flex-1">
-                        <h3 className="text-xl font-bold text-gray-900">{color.colorName}</h3>
+                        <h3 className="text-xl font-bold text-gray-900">{color.name}</h3>
                         <p className="text-sm text-gray-500 mb-2">{color.description}</p>
+                        {color.technique && (
+                          <p className="text-sm text-purple-700 mb-2">Technique: {color.technique}</p>
+                        )}
                         <div className={`inline-flex px-3 py-1 rounded-full text-sm font-bold border ${getScoreColor(color.suitabilityScore)}`}>
                           {Math.round(color.suitabilityScore * 100)}% Match
                         </div>
@@ -800,15 +735,20 @@ export default function StyleVision() {
             )}
 
             {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-                {error}
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Error</p>
+                  <p className="text-sm">{error}</p>
+                </div>
               </div>
             )}
 
-            {!hairResults && !colorResults && !error && (
+            {!hairResults && !colorResults && !error && !isAnalyzing && (
               <div className="text-center py-12 text-gray-500">
-                <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Capture a photo to get AI-powered recommendations</p>
+                <Wand2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="font-semibold">Take a photo to see AI-generated hairstyle previews</p>
+                <p className="text-sm mt-2">Our AI will show YOU with different haircuts</p>
               </div>
             )}
           </div>
@@ -816,59 +756,31 @@ export default function StyleVision() {
       </div>
 
       {/* Image Viewer Modal */}
-      {viewerOpen && (
+      {viewerOpen && viewerImage && (
         <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4">
           <button
-            onClick={closeImageViewer}
-            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            onClick={() => setViewerOpen(false)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white"
           >
             <X className="w-6 h-6" />
           </button>
 
           <div className="max-w-4xl w-full">
-            <h2 className="text-2xl font-bold text-white mb-4 text-center">{selectedStyle}</h2>
+            <h2 className="text-2xl font-bold text-white mb-4 text-center flex items-center justify-center gap-2">
+              <Wand2 className="w-6 h-6" />
+              {selectedStyle}
+            </h2>
             
-            <div className="relative aspect-square bg-black rounded-2xl overflow-hidden mb-4">
+            <div className="relative aspect-[4/3] bg-black rounded-2xl overflow-hidden">
               <img
-                src={viewerImages[currentImageIndex]}
-                alt={`${selectedStyle} view ${currentImageIndex + 1}`}
-                className="w-full h-full object-cover"
+                src={viewerImage}
+                alt={selectedStyle}
+                className="w-full h-full object-contain"
               />
-              
-              <button
-                onClick={previousImage}
-                className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
-              >
-                <ChevronDown className="w-6 h-6 rotate-90" />
-              </button>
-              <button
-                onClick={nextImage}
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
-              >
-                <ChevronDown className="w-6 h-6 -rotate-90" />
-              </button>
             </div>
-
-            <div className="flex gap-2 justify-center overflow-x-auto pb-2">
-              {viewerImages.map((img, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentImageIndex(idx)}
-                  className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden transition-all ${
-                    currentImageIndex === idx ? 'ring-2 ring-purple-500 scale-105' : 'opacity-60 hover:opacity-100'
-                  }`}
-                >
-                  <img
-                    src={img}
-                    alt={`Thumbnail ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                </button>
-              ))}
-            </div>
-
+            
             <p className="text-white/60 text-center mt-4 text-sm">
-              {currentImageIndex + 1} of {viewerImages.length} - Click arrows or thumbnails to browse
+              AI-generated preview of you with this hairstyle
             </p>
           </div>
         </div>
