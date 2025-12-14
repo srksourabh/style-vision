@@ -1,8 +1,5 @@
 // StyleVision AI - Gemini Service
-// Uses Gemini 2.0 Flash for face analysis and hairstyle recommendations
-
-const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// Uses server-side API route for secure Gemini API calls
 
 // Types
 export interface HairstyleRecommendation {
@@ -49,206 +46,70 @@ export interface ColorAnalysisResult {
   expertTip: string;
 }
 
-// Helper function to extract base64 data from data URL
-function extractBase64(dataUrl: string): { mimeType: string; data: string } {
-  const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (matches) {
-    return { mimeType: matches[1], data: matches[2] };
-  }
-  // Assume it's already base64 without prefix
-  return { mimeType: 'image/jpeg', data: dataUrl };
-}
-
-// Parse JSON from potentially markdown-wrapped response
-function parseJsonResponse(text: string): any {
-  // Try to extract JSON from markdown code blocks
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) {
-    return JSON.parse(jsonMatch[1].trim());
-  }
-  // Try direct parse
-  return JSON.parse(text);
-}
-
-// Main face analysis function
+// Main face analysis function - uses server-side API route
 export async function analyzeWithGemini(imageSrc: string): Promise<AnalysisResult> {
-  if (!GEMINI_API_KEY) {
-    console.warn('Gemini API key not configured, using fallback data');
-    return getFallbackAnalysis();
-  }
-
-  const { mimeType, data } = extractBase64(imageSrc);
-
-  const prompt = `You are an elite virtual hair stylist with advanced computer vision capabilities. Analyze this person's photo and provide personalized hairstyle recommendations.
-
-ANALYZE:
-1. Face shape (oval, round, square, heart, oblong, diamond)
-2. Facial features (jawline, forehead width, cheekbone prominence, eye shape)
-3. Current hair type and texture
-4. Overall aesthetic and style preferences visible
-
-PROVIDE 6 hairstyle recommendations ranked by suitability.
-
-Return ONLY valid JSON in this exact format:
-{
-  "faceShape": "string",
-  "faceFeatures": {
-    "jawline": "string description",
-    "forehead": "string description",
-    "cheekbones": "string description",
-    "eyeShape": "string description"
-  },
-  "hairType": "string",
-  "hairTexture": "string",
-  "confidenceScore": 0.0-1.0,
-  "recommendations": [
-    {
-      "name": "Hairstyle Name",
-      "description": "Why this suits you - be specific about face shape and features",
-      "suitabilityScore": 0.0-1.0,
-      "maintenanceLevel": "Low|Medium|High",
-      "stylingTips": ["tip1", "tip2", "tip3"],
-      "bestFor": ["occasion1", "occasion2"]
-    }
-  ],
-  "expertTip": "One personalized styling tip based on their unique features"
-}`;
-
   try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    console.log('Calling server-side analysis API...');
+    
+    const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: data
-              }
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 4096,
-        },
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        ],
+        imageSrc,
+        analysisType: 'hair'
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Gemini API error:', errorData);
-      throw new Error(`API error: ${response.status}`);
-    }
-
     const result = await response.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    if (!text) {
-      throw new Error('No response text from Gemini');
+    if (!response.ok || result.useFallback) {
+      console.warn('API returned error or fallback flag:', result.error);
+      return getFallbackAnalysis();
     }
 
-    const parsed = parseJsonResponse(text);
-    return parsed as AnalysisResult;
+    if (result.success && result.data) {
+      console.log('Successfully received AI analysis');
+      return result.data as AnalysisResult;
+    }
+
+    return getFallbackAnalysis();
 
   } catch (error) {
-    console.error('Error analyzing image:', error);
+    console.error('Error calling analysis API:', error);
     return getFallbackAnalysis();
   }
 }
 
-// Color analysis function
+// Color analysis function - uses server-side API route
 export async function analyzeColorWithGemini(imageSrc: string): Promise<ColorAnalysisResult> {
-  if (!GEMINI_API_KEY) {
-    console.warn('Gemini API key not configured, using fallback data');
-    return getFallbackColorAnalysis();
-  }
-
-  const { mimeType, data } = extractBase64(imageSrc);
-
-  const prompt = `You are an expert colorist specializing in hair color recommendations using seasonal color analysis.
-
-Analyze this person's photo and determine:
-1. Skin tone (fair, light, medium, tan, deep)
-2. Undertone (warm, cool, neutral)
-3. Color season (Spring, Summer, Autumn, Winter)
-
-Based on this analysis, recommend 6 hair colors that would complement their natural coloring.
-
-Return ONLY valid JSON in this exact format:
-{
-  "skinTone": "string",
-  "undertone": "warm|cool|neutral",
-  "season": "Spring|Summer|Autumn|Winter",
-  "recommendations": [
-    {
-      "colorName": "Color Name",
-      "hexCode": "#RRGGBB",
-      "description": "Why this color complements their coloring",
-      "suitabilityScore": 0.0-1.0,
-      "maintenanceLevel": "Low|Medium|High",
-      "bestFor": ["benefit1", "benefit2"]
-    }
-  ],
-  "expertTip": "Personalized color advice"
-}`;
-
   try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    console.log('Calling server-side color analysis API...');
+    
+    const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inline_data: {
-                mime_type: mimeType,
-                data: data
-              }
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 4096,
-        },
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        ],
+        imageSrc,
+        analysisType: 'color'
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
-
     const result = await response.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    if (!text) {
-      throw new Error('No response text from Gemini');
+    if (!response.ok || result.useFallback) {
+      console.warn('API returned error or fallback flag:', result.error);
+      return getFallbackColorAnalysis();
     }
 
-    return parseJsonResponse(text) as ColorAnalysisResult;
+    if (result.success && result.data) {
+      console.log('Successfully received AI color analysis');
+      return result.data as ColorAnalysisResult;
+    }
+
+    return getFallbackColorAnalysis();
 
   } catch (error) {
-    console.error('Error analyzing color:', error);
+    console.error('Error calling color analysis API:', error);
     return getFallbackColorAnalysis();
   }
 }
@@ -327,20 +188,20 @@ function getFallbackColorAnalysis(): ColorAnalysisResult {
     season: 'Autumn',
     recommendations: [
       {
+        colorName: 'Warm Honey Blonde',
+        hexCode: '#EB9605',
+        description: 'Golden tones that complement warm undertones and add brightness to your complexion.',
+        suitabilityScore: 0.95,
+        maintenanceLevel: 'Medium',
+        bestFor: ['Summer months', 'Brightening effect', 'Youthful appearance'],
+      },
+      {
         colorName: 'Rich Chestnut',
         hexCode: '#954535',
         description: 'A warm, dimensional brown that enhances your natural warmth and creates a sun-kissed glow.',
-        suitabilityScore: 0.95,
+        suitabilityScore: 0.92,
         maintenanceLevel: 'Low',
         bestFor: ['Natural enhancement', 'Low maintenance', 'Year-round wear'],
-      },
-      {
-        colorName: 'Honey Blonde',
-        hexCode: '#EB9605',
-        description: 'Golden tones that complement warm undertones and add brightness to your complexion.',
-        suitabilityScore: 0.90,
-        maintenanceLevel: 'Medium',
-        bestFor: ['Summer months', 'Brightening effect', 'Youthful appearance'],
       },
       {
         colorName: 'Copper Auburn',
@@ -354,7 +215,7 @@ function getFallbackColorAnalysis(): ColorAnalysisResult {
         colorName: 'Caramel Balayage',
         hexCode: '#FFD59A',
         description: 'Hand-painted caramel highlights that create natural-looking dimension and movement.',
-        suitabilityScore: 0.92,
+        suitabilityScore: 0.90,
         maintenanceLevel: 'Low',
         bestFor: ['Low maintenance', 'Natural look', 'Gradual grow-out'],
       },
