@@ -6,6 +6,11 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
 const GEMINI_IMAGE_MODEL = 'gemini-2.0-flash-exp';
 
+interface StylistTip {
+  stylist_name: string;
+  tip: string;
+}
+
 interface HairstyleAnalysis {
   face_shape: string;
   face_measurements: {
@@ -25,10 +30,7 @@ interface HairstyleAnalysis {
     trend_source: string;
     geometric_reasoning: string;
     celebrity_reference: string;
-    stylist_tip: {
-      stylist_name: string;
-      tip: string;
-    };
+    stylist_tip: StylistTip;
     description: string;
     prompts: {
       front: string;
@@ -37,10 +39,9 @@ interface HairstyleAnalysis {
   }>;
 }
 
-// Utility: Sleep function
+// Utility functions
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Utility: Clean JSON response - remove markdown code blocks
 function cleanJsonResponse(text: string): string {
   let cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
@@ -50,12 +51,7 @@ function cleanJsonResponse(text: string): string {
   return cleaned;
 }
 
-// Utility: Retry with exponential backoff
-async function fetchWithRetry(
-  url: string, 
-  options: RequestInit, 
-  maxRetries: number = 3
-): Promise<Response> {
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries: number = 3): Promise<Response> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       console.log(`API attempt ${attempt + 1}/${maxRetries}...`);
@@ -66,7 +62,6 @@ async function fetchWithRetry(
         console.error(`Server error ${response.status}:`, errorText.substring(0, 200));
         if (attempt < maxRetries - 1) {
           const waitTime = Math.pow(2, attempt) * 1000;
-          console.log(`Waiting ${waitTime/1000}s before retry...`);
           await sleep(waitTime);
           continue;
         }
@@ -80,10 +75,8 @@ async function fetchWithRetry(
       }
       
       return response;
-      
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        console.error(`Network error on attempt ${attempt + 1}:`, error);
         if (attempt < maxRetries - 1) {
           const waitTime = Math.pow(2, attempt) * 1000;
           await sleep(waitTime);
@@ -96,12 +89,9 @@ async function fetchWithRetry(
   throw new Error('Max retries reached');
 }
 
-// Step 1: Pure AI-driven face analysis and hairstyle recommendation
-async function analyzeAndGeneratePrompts(userPhotoBase64: string): Promise<HairstyleAnalysis | null> {
-  const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
-  
-  // PURE AI-DRIVEN PROMPT with Famous Stylist Tips
-  const aiAnalysisPrompt = `### ROLE ###
+// Mode-specific prompts
+function getAnalysisPrompt(mode: 'hair' | 'bridal' | 'color'): string {
+  const baseRole = `### ROLE ###
 You are a world-class **Face Morphologist** and **Celebrity Hair Stylist** with 25+ years of experience. You have trained under and collaborated with the world's most renowned hair stylists including:
 
 **LEGENDARY STYLISTS YOU CHANNEL:**
@@ -114,8 +104,9 @@ You are a world-class **Face Morphologist** and **Celebrity Hair Stylist** with 
 - **Guido Palau** (UK) - Fashion week mastermind, avant-garde trendsetter
 - **Jen Atkin** (USA) - Kardashian stylist, social media hair icon
 - **Yuko Yamashita** (Japan) - Japanese straightening pioneer, Asian hair specialist
-- **Kim Sun-young** (Korea) - K-beauty hair trends, glass hair technique
+- **Kim Sun-young** (Korea) - K-beauty hair trends, glass hair technique`;
 
+  const faceMeasurement = `
 ### TASK ###
 **Step 1: MEASURE the face in the uploaded photo**
 Perform detailed facial geometry analysis:
@@ -130,16 +121,55 @@ Perform detailed facial geometry analysis:
 Based on measurements, classify as: Oval, Round, Square, Rectangle, Diamond, Heart, Oblong, or Triangle
 
 **Step 3: IDENTIFY styling goals**
-What should the hairstyle achieve for THIS specific face?
-- Which features to enhance?
-- Which proportions to balance?
-- Where to add/reduce visual volume?
+Determine specific objectives to enhance this face:
+- **Add Height**: Does the face need vertical elongation?
+- **Create Angles**: Does the face need more angular definition?
+- **Slim the Face**: Does the face need narrowing effects?
+- **Define Jawline**: Does the jawline need more definition?
+- **Balance Proportions**: What needs balancing (forehead/chin ratio, etc.)?
+- **Soften Features**: Do any features need softening?`;
 
-**Step 4: RECOMMEND 6 hairstyles**
-Based on YOUR expert analysis, current global fashion trends, and wisdom from legendary stylists, recommend exactly 6 hairstyles that would BEST SUIT this person's unique facial geometry.
+  let modeSpecific = '';
+  
+  if (mode === 'hair') {
+    modeSpecific = `
+**Step 4: RECOMMEND 6 HAIRSTYLES**
+Based on YOUR expert analysis, current global fashion trends (2024-2025), and wisdom from legendary stylists, recommend exactly 6 hairstyles that will:
+- ADD HEIGHT where needed through volume placement
+- CREATE ANGLES to define facial structure
+- SLIM THE FACE through strategic layering and framing
+- DEFINE THE JAWLINE through length and texture choices
+- CREATE BALANCED APPEARANCE overall
 
-For EACH hairstyle, include a relevant tip from one of the famous stylists listed above - choose the stylist whose expertise best matches that particular style recommendation.
+For EACH hairstyle, generate prompts for BOTH front view AND back view.
+The styles should be diverse: include classic, modern, trendy, and bold options.`;
+  } else if (mode === 'bridal') {
+    modeSpecific = `
+**Step 4: RECOMMEND 6 BRIDAL HAIRSTYLES**
+Based on YOUR expert analysis and bridal fashion trends, recommend exactly 6 BRIDAL/WEDDING hairstyles that will:
+- CREATE ELEGANCE suitable for wedding ceremonies
+- COMPLEMENT traditional and modern bridal wear (lehenga, saree, gown)
+- ADD HEIGHT AND VOLUME for a regal appearance
+- FRAME THE FACE beautifully for wedding photography
+- ACCOMMODATE bridal accessories (maang tikka, flowers, veil, tiara)
 
+Consider styles like: Elegant updos, romantic curls, braided styles, half-up half-down, traditional buns, modern bridal waves.
+For EACH hairstyle, generate prompts for BOTH front view AND back view.`;
+  } else if (mode === 'color') {
+    modeSpecific = `
+**Step 4: RECOMMEND 6 HAIR COLORS**
+Based on YOUR expert analysis of their skin tone, face shape, and current color trends, recommend exactly 6 HAIR COLORS that will:
+- COMPLEMENT their skin undertone (warm/cool/neutral)
+- ENHANCE their facial features through strategic color placement
+- ADD DIMENSION through highlights, lowlights, or balayage
+- CREATE FACE-FRAMING effects with color
+- SUIT their lifestyle (low maintenance vs high fashion)
+
+Consider colors like: Natural shades, balayage, highlights, ombre, fashion colors, dimensional coloring.
+For EACH color recommendation, generate prompts for BOTH front view AND back view showing the color from different angles.`;
+  }
+
+  const outputFormat = `
 ### OUTPUT FORMAT (STRICT JSON ONLY) ###
 Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
 
@@ -155,26 +185,34 @@ Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
     "chin_shape": "Pointed/Rounded/Square/V-shaped",
     "proportions": "Golden ratio assessment"
   },
-  "styling_goals": "What the hairstyle should achieve for this face - enhance X, balance Y, add volume at Z",
+  "styling_goals": "Specific goals: add height at crown, create angles at temples, slim face with face-framing layers, define jawline with length below chin, balance wide forehead with volume at sides, etc.",
   "hairstyles": [
     {
       "id": 1,
-      "name": "AI recommended style name",
-      "trend_source": "Origin of this trend (Korean Wave, Italian Runway, Bollywood Glam, etc.)",
-      "geometric_reasoning": "Why this specific style works for their face measurements",
-      "celebrity_reference": "A celebrity with similar face shape who wears this style well",
+      "name": "AI recommended style/color name",
+      "trend_source": "Origin (Korean Bridal, Hollywood Glam, Italian Runway, Bollywood Wedding, etc.)",
+      "geometric_reasoning": "How this specifically adds height/creates angles/slims face/defines jawline/balances features",
+      "celebrity_reference": "A celebrity with similar face shape who wears this style/color",
       "stylist_tip": {
-        "stylist_name": "Name of famous stylist (Javed Habib, Aalim Hakim, Vidal Sassoon, etc.)",
-        "tip": "A relevant styling tip or philosophy from this stylist that applies to this look"
+        "stylist_name": "Name of famous stylist",
+        "tip": "Relevant styling tip from this expert"
       },
-      "description": "Detailed description of the hairstyle",
+      "description": "Detailed description",
       "prompts": {
-        "front": "Transform the hair in this photo to [detailed style description including length, texture, volume placement, parting, finishing]. Keep the face completely unchanged. Professional studio photography, photorealistic, fashion magazine quality.",
-        "back": "Back view showing [neckline, taper, layers, texture details]"
+        "front": "Transform the hair to [detailed description]. Maintain all facial features unchanged. [Specific styling goals achieved]. Professional photography, photorealistic, fashion magazine quality.",
+        "back": "Back view of the same hairstyle showing [neckline, texture, layers, color placement from behind]. Same person, same style, viewed from behind. Professional photography."
       }
     }
   ]
 }`;
+
+  return baseRole + faceMeasurement + modeSpecific + outputFormat;
+}
+
+// Step 1: AI Analysis
+async function analyzeAndGeneratePrompts(userPhotoBase64: string, mode: 'hair' | 'bridal' | 'color'): Promise<HairstyleAnalysis | null> {
+  const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
+  const aiAnalysisPrompt = getAnalysisPrompt(mode);
 
   try {
     const response = await fetchWithRetry(
@@ -186,18 +224,10 @@ Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
           contents: [{
             parts: [
               { text: aiAnalysisPrompt },
-              {
-                inline_data: {
-                  mime_type: "image/jpeg",
-                  data: base64Data
-                }
-              }
+              { inline_data: { mime_type: "image/jpeg", data: base64Data } }
             ]
           }],
-          generationConfig: {
-            temperature: 0.9,
-            maxOutputTokens: 8192,
-          },
+          generationConfig: { temperature: 0.9, maxOutputTokens: 8192 },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -216,29 +246,20 @@ Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
       return null;
     }
     
-    if (!data.candidates || data.candidates.length === 0) {
-      console.error('No candidates in response');
-      return null;
-    }
-    
-    if (data.candidates[0].finishReason === 'SAFETY') {
-      console.error('Blocked by safety filter');
+    if (!data.candidates || data.candidates.length === 0 || data.candidates[0].finishReason === 'SAFETY') {
+      console.error('No valid response from Gemini');
       return null;
     }
     
     const text = data.candidates[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      console.error('No text in response');
-      return null;
-    }
+    if (!text) return null;
 
     const cleanedText = cleanJsonResponse(text);
-    console.log('AI Analysis (first 500 chars):', cleanedText.substring(0, 500));
+    console.log('AI Analysis complete for mode:', mode);
 
     const analysis = JSON.parse(cleanedText) as HairstyleAnalysis;
     console.log('Face Shape:', analysis.face_shape);
     console.log('Styling Goals:', analysis.styling_goals);
-    console.log('Recommended Styles:', analysis.hairstyles.map(h => `${h.name} (Tip by ${h.stylist_tip?.stylist_name})`).join(', '));
     return analysis;
 
   } catch (error) {
@@ -247,16 +268,12 @@ Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
   }
 }
 
-// Step 2: Generate hairstyle image
-async function generateHairstyleWithGemini(
-  userPhotoBase64: string, 
-  prompt: string,
-  styleIndex: number
-): Promise<string | null> {
+// Step 2: Generate image (front or back)
+async function generateImage(userPhotoBase64: string, prompt: string, styleIndex: number, view: 'front' | 'back'): Promise<string | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   
   try {
-    console.log(`Generating style ${styleIndex}...`);
+    console.log(`Generating style ${styleIndex} ${view} view...`);
     
     const response = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
@@ -267,19 +284,11 @@ async function generateHairstyleWithGemini(
           contents: [{
             role: "user",
             parts: [
-              {
-                inline_data: {
-                  mime_type: "image/jpeg",
-                  data: base64Data
-                }
-              },
+              { inline_data: { mime_type: "image/jpeg", data: base64Data } },
               { text: prompt }
             ]
           }],
-          generationConfig: {
-            responseModalities: ["TEXT", "IMAGE"],
-            temperature: 1.0
-          },
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"], temperature: 1.0 },
           safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -293,30 +302,22 @@ async function generateHairstyleWithGemini(
 
     const data = await response.json();
     
-    if (data.promptFeedback?.blockReason) {
-      console.error(`Style ${styleIndex} blocked: ${data.promptFeedback.blockReason}`);
-      return null;
-    }
-    
-    if (!data.candidates || data.candidates.length === 0 || data.candidates[0].finishReason === 'SAFETY') {
-      console.error(`Style ${styleIndex} - No valid response`);
+    if (data.promptFeedback?.blockReason || !data.candidates || data.candidates.length === 0) {
       return null;
     }
     
     if (data.candidates[0]?.content?.parts) {
       for (const part of data.candidates[0].content.parts) {
         if (part.inlineData?.data) {
-          console.log(`Style ${styleIndex} - Success`);
+          console.log(`Style ${styleIndex} ${view} - Success`);
           return `data:image/png;base64,${part.inlineData.data}`;
         }
       }
     }
     
-    console.error(`Style ${styleIndex} - No image in response`);
     return null;
-    
   } catch (error) {
-    console.error(`Style ${styleIndex} error:`, error);
+    console.error(`Style ${styleIndex} ${view} error:`, error);
     return null;
   }
 }
@@ -324,7 +325,7 @@ async function generateHairstyleWithGemini(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userPhoto, styleIndex } = body;
+    const { userPhoto, styleIndex, mode = 'hair' } = body;
 
     if (!userPhoto) {
       return NextResponse.json({ success: false, error: 'No photo provided' }, { status: 400 });
@@ -334,9 +335,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'API key not configured' }, { status: 500 });
     }
 
-    // Step 1: AI measures face and recommends personalized hairstyles
-    console.log('Step 1: AI measuring face geometry and consulting world-famous stylists...');
-    const analysis = await analyzeAndGeneratePrompts(userPhoto);
+    // Validate mode
+    const validMode = ['hair', 'bridal', 'color'].includes(mode) ? mode : 'hair';
+
+    // Step 1: AI Analysis
+    console.log(`Step 1: AI analyzing face for ${validMode} mode...`);
+    const analysis = await analyzeAndGeneratePrompts(userPhoto, validMode as 'hair' | 'bridal' | 'color');
     
     if (!analysis || !analysis.hairstyles?.length) {
       return NextResponse.json({ 
@@ -351,9 +355,11 @@ export async function POST(request: NextRequest) {
       stylingGoals: analysis.styling_goals
     };
 
+    // Prepare styles with prompts
     const stylesToGenerate = analysis.hairstyles.map(h => ({
       name: h.name,
-      prompt: h.prompts.front,
+      frontPrompt: h.prompts.front,
+      backPrompt: h.prompts.back,
       geometricReasoning: h.geometric_reasoning,
       trendSource: h.trend_source,
       celebrityReference: h.celebrity_reference,
@@ -361,12 +367,11 @@ export async function POST(request: NextRequest) {
       description: h.description
     }));
 
-    // Filter to specific style if requested
     const indicesToGenerate = styleIndex !== undefined ? [styleIndex] : [0, 1, 2, 3, 4, 5];
     const results = [];
 
-    // Step 2: Generate AI-recommended hairstyles
-    console.log(`Step 2: Generating ${indicesToGenerate.length} AI-recommended hairstyles...`);
+    // Step 2: Generate BOTH front and back images
+    console.log(`Step 2: Generating ${indicesToGenerate.length} styles with front & back views...`);
     
     for (const idx of indicesToGenerate) {
       if (idx >= stylesToGenerate.length) continue;
@@ -374,34 +379,40 @@ export async function POST(request: NextRequest) {
       const style = stylesToGenerate[idx];
       console.log(`Generating: ${style.name}`);
       
-      const imageUrl = await generateHairstyleWithGemini(userPhoto, style.prompt, idx);
+      // Generate front view
+      const frontImage = await generateImage(userPhoto, style.frontPrompt, idx, 'front');
+      
+      // Generate back view
+      const backImage = await generateImage(userPhoto, style.backPrompt, idx, 'back');
       
       results.push({
         styleIndex: idx,
         styleName: style.name,
-        image: imageUrl,
+        frontImage,
+        backImage,
         geometricReasoning: style.geometricReasoning,
         trendSource: style.trendSource,
         celebrityReference: style.celebrityReference,
         stylistTip: style.stylistTip,
         description: style.description,
-        error: imageUrl ? null : 'Generation failed'
+        error: frontImage ? null : 'Generation failed'
       });
       
       if (indicesToGenerate.length > 1 && idx !== indicesToGenerate[indicesToGenerate.length - 1]) {
-        await sleep(500);
+        await sleep(300);
       }
     }
 
-    const successCount = results.filter(r => r.image).length;
+    const successCount = results.filter(r => r.frontImage).length;
     console.log(`Complete: ${successCount}/${results.length} generated`);
     
     return NextResponse.json({
       success: successCount > 0,
+      mode: validMode,
       faceAnalysis,
       results,
       message: successCount > 0 
-        ? `Generated ${successCount} personalized hairstyles with expert stylist tips`
+        ? `Generated ${successCount} personalized styles with front & back views`
         : 'Could not generate styles. Please try a different photo.'
     });
 
