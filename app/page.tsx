@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Sparkles, RefreshCw, ChevronDown, X, Loader2, Grid3X3, ChevronLeft, ChevronRight, Scissors, Clock, Star } from 'lucide-react';
+import { Camera, Sparkles, RefreshCw, ChevronDown, X, Loader2, Grid3X3, ChevronLeft, ChevronRight, Scissors, Clock, Star, Wand2, ExternalLink, Copy, Check } from 'lucide-react';
 
 // Hairstyle data with reference images
 const HAIRSTYLES = [
@@ -102,11 +102,102 @@ export default function StyleVision() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState<SelectedStyle | null>(null);
   const [imageIndexes, setImageIndexes] = useState<number[]>([0, 0, 0, 0, 0, 0]);
+  const [showColabModal, setShowColabModal] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Colab code snippets
+  const colabCodes = [
+    {
+      title: "Step 1: Install Libraries",
+      code: `# Install the necessary libraries
+!pip install -q diffusers transformers accelerate torch torchvision pillow
+print("Installation complete!")`
+    },
+    {
+      title: "Step 2: Capture Photo with Webcam",
+      code: `from IPython.display import display, Javascript
+from google.colab.output import eval_js
+from base64 import b64decode
+from PIL import Image
+import io
+
+def take_photo(quality=0.8):
+  js = Javascript('''
+    async function takePhoto(quality) {
+      const div = document.createElement('div');
+      const capture = document.createElement('button');
+      capture.textContent = 'Capture';
+      div.appendChild(capture);
+      const video = document.createElement('video');
+      video.style.display = 'block';
+      const stream = await navigator.mediaDevices.getUserMedia({video: true});
+      document.body.appendChild(div);
+      div.appendChild(video);
+      video.srcObject = stream;
+      await video.play();
+      google.colab.output.setIframeHeight(document.documentElement.scrollHeight, true);
+      await new Promise((resolve) => capture.onclick = resolve);
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      stream.getVideoTracks()[0].stop();
+      div.remove();
+      return canvas.toDataURL('image/jpeg', quality);
+    }
+    ''')
+  display(js)
+  data = eval_js('takePhoto({})'.format(quality))
+  binary = b64decode(data.split(',')[1])
+  return binary
+
+print("Click 'Capture' button below...")
+image_bytes = take_photo()
+input_image = Image.open(io.BytesIO(image_bytes)).convert("RGB").resize((512, 512))
+display(input_image)
+print("Photo captured!")`
+    },
+    {
+      title: "Step 3: Generate 6 Hairstyles",
+      code: `import torch
+from diffusers import StableDiffusionInstructPix2PixPipeline
+
+print("Loading AI model (1-2 minutes)...")
+pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+    "timbrooks/instruct-pix2pix", 
+    torch_dtype=torch.float16, 
+    safety_checker=None
+).to("cuda")
+
+prompts = [
+    "make the hair into a classic side part style",
+    "make the hair into a short textured crop",
+    "make the hair slicked back with pomade",
+    "make the hair into an undercut with long top",
+    "make the hair into a short crew cut",
+    "make the hair spiky and textured"
+]
+
+print("Generating 6 hairstyles...")
+for i, prompt in enumerate(prompts):
+    print(f"Style {i+1}: {prompt}")
+    result = pipe(prompt, image=input_image, num_inference_steps=20, image_guidance_scale=1.5).images[0]
+    display(result)
+    print("-" * 40)
+print("Done! Right-click images to save.")`
+    }
+  ];
+
+  const copyCode = (index: number) => {
+    navigator.clipboard.writeText(colabCodes[index].code);
+    setCopiedCode(index);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
 
   // Face detection
   const detectFace = useCallback((): boolean => {
@@ -155,7 +246,6 @@ export default function StyleVision() {
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
     const v = videoRef.current, c = canvasRef.current;
-    // Square crop from center
     const size = Math.min(v.videoWidth, v.videoHeight);
     c.width = size; 
     c.height = size;
@@ -260,6 +350,82 @@ export default function StyleVision() {
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
+  // Colab Modal
+  const ColabModal = () => (
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setShowColabModal(false)}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wand2 className="w-5 h-5 text-purple-600" />
+            <h2 className="text-lg font-bold">AI Hair Editor (Free)</h2>
+          </div>
+          <button onClick={() => setShowColabModal(false)} className="p-1 hover:bg-gray-100 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div className="bg-gradient-to-r from-purple-100 to-teal-100 rounded-xl p-4">
+            <h3 className="font-bold text-purple-900 mb-2">See YOUR face with different hairstyles!</h3>
+            <p className="text-sm text-purple-800">
+              Google Colab gives you free access to powerful GPUs. This AI can actually edit your photo to show different hairstyles on YOUR face.
+            </p>
+          </div>
+
+          <a 
+            href="https://colab.research.google.com/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+          >
+            <ExternalLink className="w-5 h-5" />
+            Open Google Colab
+          </a>
+
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-sm text-yellow-800">
+              <strong>Important:</strong> In Colab, go to <strong>Runtime → Change runtime type → T4 GPU</strong> before running the code.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {colabCodes.map((snippet, idx) => (
+              <div key={idx} className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-100 px-3 py-2 flex items-center justify-between">
+                  <span className="font-semibold text-sm">{snippet.title}</span>
+                  <button 
+                    onClick={() => copyCode(idx)}
+                    className="flex items-center gap-1 px-2 py-1 bg-white rounded text-xs font-medium hover:bg-gray-50"
+                  >
+                    {copiedCode === idx ? (
+                      <><Check className="w-3 h-3 text-green-600" /> Copied!</>
+                    ) : (
+                      <><Copy className="w-3 h-3" /> Copy</>
+                    )}
+                  </button>
+                </div>
+                <pre className="p-3 text-xs overflow-x-auto bg-gray-900 text-green-400 max-h-48">
+                  <code>{snippet.code}</code>
+                </pre>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+            <strong>How to use:</strong>
+            <ol className="list-decimal ml-4 mt-1 space-y-1">
+              <li>Open Google Colab link above</li>
+              <li>Click "+ Code" to add a new cell</li>
+              <li>Copy & paste each code block in order</li>
+              <li>Press the Play button ▶ on each cell</li>
+              <li>Allow camera access when prompted</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   // Landing Page
   if (currentView === 'landing') {
     return (
@@ -288,11 +454,18 @@ export default function StyleVision() {
             Take a photo, get AI-powered hairstyle recommendations with barber instructions
           </p>
 
-          <button onClick={startCamera} className="px-8 py-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold hover:shadow-xl transition-all flex items-center gap-2 mx-auto">
-            <Camera className="w-5 h-5" /> Get Started
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-6">
+            <button onClick={startCamera} className="px-8 py-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold hover:shadow-xl transition-all flex items-center gap-2 justify-center">
+              <Camera className="w-5 h-5" /> Get Recommendations
+            </button>
+            <button onClick={() => setShowColabModal(true)} className="px-8 py-4 bg-white border-2 border-purple-400 text-purple-700 rounded-xl font-semibold hover:shadow-xl transition-all flex items-center gap-2 justify-center">
+              <Wand2 className="w-5 h-5" /> Try AI Hair Editor
+            </button>
+          </div>
 
-          <div className="grid grid-cols-3 gap-4 mt-12 max-w-lg mx-auto">
+          <p className="text-xs text-gray-500 mb-12">AI Hair Editor uses Google Colab (free) to show YOUR face with different hairstyles</p>
+
+          <div className="grid grid-cols-3 gap-4 mt-8 max-w-lg mx-auto">
             <div className="p-4 bg-white rounded-xl shadow-sm">
               <Camera className="w-8 h-8 text-purple-600 mx-auto mb-2" />
               <p className="text-sm font-medium">Take Photo</p>
@@ -307,6 +480,8 @@ export default function StyleVision() {
             </div>
           </div>
         </section>
+
+        {showColabModal && <ColabModal />}
       </div>
     );
   }
@@ -327,7 +502,6 @@ export default function StyleVision() {
 
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="w-full max-w-sm">
-            {/* Square 1:1 camera view */}
             <div className="relative aspect-square bg-black rounded-2xl overflow-hidden">
               {isCameraActive || isAnalyzing ? (
                 <>
@@ -421,6 +595,14 @@ export default function StyleVision() {
                 <p className="text-sm font-bold">Your Photo</p>
               </div>
             </div>
+            
+            {/* AI Editor Button */}
+            <button 
+              onClick={() => setShowColabModal(true)}
+              className="mt-2 w-full py-2 bg-gradient-to-r from-purple-500 to-teal-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 hover:shadow-md transition-all"
+            >
+              <Wand2 className="w-3.5 h-3.5" /> Try AI Hair Editor
+            </button>
           </div>
 
           {/* RIGHT: 6 Hairstyles in 3x2 grid */}
@@ -521,6 +703,8 @@ export default function StyleVision() {
           </p>
         )}
       </div>
+
+      {showColabModal && <ColabModal />}
     </div>
   );
 }
