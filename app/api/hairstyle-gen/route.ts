@@ -1,33 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Gemini 2.0 Flash with image generation
+// Gemini API Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 // Different hairstyles to try - optimized for men's cuts
 const HAIRSTYLES = [
   {
     name: "Classic Side Part",
-    prompt: "Edit this photo to give the person a classic side part hairstyle - hair parted on the left side, neatly combed, with a clean fade on the sides. Keep the EXACT same face, skin, features, and background. Only change the hair."
+    prompt: "Edit this person's hair to have a classic side part hairstyle - hair neatly parted on the left side, combed smoothly with a clean fade on the sides. Preserve their exact face, skin tone, facial features, expression, and background. ONLY modify the hair."
   },
   {
     name: "Textured Crop",
-    prompt: "Edit this photo to give the person a textured crop hairstyle - short on sides with textured, slightly messy top. Keep the EXACT same face, skin, features, and background. Only change the hair."
+    prompt: "Edit this person's hair to have a textured crop hairstyle - short textured top with natural movement, short faded sides. Preserve their exact face, skin tone, facial features, expression, and background. ONLY modify the hair."
   },
   {
     name: "Slicked Back",
-    prompt: "Edit this photo to give the person a slicked back hairstyle - hair combed backward with a polished wet look, clean sides. Keep the EXACT same face, skin, features, and background. Only change the hair."
+    prompt: "Edit this person's hair to have a slicked back hairstyle - hair combed backward with a polished wet look, clean tapered sides. Preserve their exact face, skin tone, facial features, expression, and background. ONLY modify the hair."
   },
   {
     name: "Undercut with Volume",
-    prompt: "Edit this photo to give the person an undercut hairstyle - very short/shaved sides with longer voluminous top swept to one side. Keep the EXACT same face, skin, features, and background. Only change the hair."
+    prompt: "Edit this person's hair to have an undercut hairstyle - very short/buzzed sides with longer voluminous top swept to one side. Preserve their exact face, skin tone, facial features, expression, and background. ONLY modify the hair."
   },
   {
     name: "Crew Cut",
-    prompt: "Edit this photo to give the person a crew cut hairstyle - short all around, slightly longer on top, military-inspired clean cut. Keep the EXACT same face, skin, features, and background. Only change the hair."
+    prompt: "Edit this person's hair to have a crew cut hairstyle - short all around, slightly longer on top, clean military-inspired cut. Preserve their exact face, skin tone, facial features, expression, and background. ONLY modify the hair."
   },
   {
     name: "Spiky Textured",
-    prompt: "Edit this photo to give the person a spiky textured hairstyle - short sides with spiky, textured top pointing upward. Keep the EXACT same face, skin, features, and background. Only change the hair."
+    prompt: "Edit this person's hair to have a spiky textured hairstyle - short faded sides with spiky, textured top pointing upward with product. Preserve their exact face, skin tone, facial features, expression, and background. ONLY modify the hair."
   }
 ];
 
@@ -47,9 +47,12 @@ export async function POST(request: NextRequest) {
     const mimeType = matches ? matches[1] : 'image/jpeg';
     const imageData = matches ? matches[2] : userPhoto;
 
-    // Use Gemini 2.0 Flash with image generation
-    // Try the preview image generation model first
+    // Models to try in order of preference:
+    // 1. Gemini 3 Pro Image (latest, best for character consistency)
+    // 2. Gemini 2.0 Flash Preview Image Generation
+    // 3. Gemini 2.0 Flash Exp
     const models = [
+      'gemini-3-pro-image-preview',
       'gemini-2.0-flash-preview-image-generation',
       'gemini-2.0-flash-exp'
     ];
@@ -59,6 +62,8 @@ export async function POST(request: NextRequest) {
 
     for (const model of models) {
       try {
+        console.log(`Trying model: ${model}`);
+        
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
           {
@@ -68,13 +73,13 @@ export async function POST(request: NextRequest) {
               contents: [{
                 parts: [
                   {
-                    text: hairstyle.prompt
-                  },
-                  {
                     inline_data: {
                       mime_type: mimeType,
                       data: imageData
                     }
+                  },
+                  {
+                    text: hairstyle.prompt
                   }
                 ]
               }],
@@ -94,7 +99,7 @@ export async function POST(request: NextRequest) {
 
         if (!response.ok) {
           const err = await response.json().catch(() => ({}));
-          console.error(`Model ${model} error:`, response.status, err);
+          console.error(`Model ${model} error:`, response.status, JSON.stringify(err));
           lastError = err;
           continue;
         }
@@ -109,18 +114,21 @@ export async function POST(request: NextRequest) {
             result = {
               success: true,
               hairstyleName: hairstyle.name,
+              model: model,
               image: `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`
             };
+            console.log(`Success with model: ${model}`);
             break;
           }
         }
 
         if (result) break;
 
-        // If no image but got text response
+        // If no image but got text response, log it
         const textPart = parts.find((p: { text?: string }) => p.text);
         if (textPart) {
-          console.log('Got text response:', textPart.text?.substring(0, 200));
+          console.log(`Model ${model} returned text only:`, textPart.text?.substring(0, 300));
+          lastError = { message: textPart.text };
         }
 
       } catch (err) {
@@ -133,9 +141,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result);
     }
 
+    // If we get here, none of the models worked
+    const errorMessage = lastError?.error?.message || lastError?.message || 'Image generation not available';
+    
     return NextResponse.json({ 
-      error: 'Image generation not available. The model may not support image output for this request.',
-      details: lastError
+      error: errorMessage,
+      details: 'The AI model could not generate an image for this request. This may be due to content policy restrictions on editing photos of people.',
+      suggestion: 'Try with a different photo or hairstyle.'
     }, { status: 500 });
 
   } catch (error) {
