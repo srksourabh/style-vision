@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const REPLICATE_API_KEY = process.env.REPLICATE_API_TOKEN;
 
 const HAIRSTYLE_NAMES = [
   "Classic Side Part",
@@ -11,133 +11,88 @@ const HAIRSTYLE_NAMES = [
   "Spiky Textured"
 ];
 
-async function generateAllHairstyles(userPhotoBase64: string): Promise<string | null> {
+const HAIRSTYLE_PROMPTS: Record<number, string> = {
+  0: "change the hairstyle to a classic side part with hair neatly combed to one side with a clean defined part line",
+  1: "change the hairstyle to a modern textured crop with short faded sides and textured messy top",
+  2: "change the hairstyle to slicked back hair combed straight back with gel for a sophisticated look",
+  3: "change the hairstyle to an undercut with very short buzzed sides and longer styled hair on top",
+  4: "change the hairstyle to a crew cut military style with hair short all around",
+  5: "change the hairstyle to spiky textured hair styled upward in spikes"
+};
+
+async function generateWithReplicate(userPhotoBase64: string, styleIndex: number): Promise<string | null> {
+  if (!REPLICATE_API_KEY) {
+    console.error('REPLICATE_API_TOKEN not configured');
+    return null;
+  }
+
   // Remove data URL prefix if present
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
+  const dataUrl = `data:image/jpeg;base64,${base64Data}`;
+  
+  const prompt = HAIRSTYLE_PROMPTS[styleIndex];
   
   try {
-    // Use Gemini 3 Pro Image Preview (Nano Banana Pro) - same as Gemini mobile app
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            role: "user",
-            parts: [
-              {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: base64Data
-                }
-              },
-              {
-                text: `Please create 6 images showing me with different hairstyles:
-
-1. Classic Side Part - hair neatly combed to one side with a clean part line
-2. Textured Crop - short faded sides with textured messy top
-3. Slicked Back - hair combed straight back with gel, sophisticated look
-4. Undercut - very short buzzed sides with longer styled hair on top
-5. Crew Cut - short all around military style buzz cut
-6. Spiky Textured - hair styled upward in spikes
-
-Show me how I would look with each hairstyle. Create a grid showing all 6 styles.`
-              }
-            ]
-          }],
-          generationConfig: {
-            responseModalities: ["TEXT", "IMAGE"]
-          }
-        })
-      }
-    );
+    // Use InstructPix2Pix for image editing (preserves face)
+    const response = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${REPLICATE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        version: "30c1d0b916a6f8efce20493f5d61ee27491ab2a60437c13c588468b9810ec23f",
+        input: {
+          image: dataUrl,
+          prompt: prompt,
+          num_inference_steps: 50,
+          guidance_scale: 7.5,
+          image_guidance_scale: 1.5
+        }
+      })
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Gemini 3 Pro Image API error:`, errorText);
+      console.error(`Replicate API error:`, errorText);
       return null;
     }
 
-    const data = await response.json();
-    console.log('Gemini 3 Pro Image response:', JSON.stringify(data).substring(0, 500));
+    const prediction = await response.json();
+    console.log('Replicate prediction started:', prediction.id);
     
-    // Extract image from response
-    if (data.candidates?.[0]?.content?.parts) {
-      for (const part of data.candidates[0].content.parts) {
-        if (part.inlineData?.data) {
-          return `data:image/png;base64,${part.inlineData.data}`;
+    // Poll for result
+    let result = prediction;
+    let attempts = 0;
+    const maxAttempts = 60; // 60 seconds max
+    
+    while (result.status !== 'succeeded' && result.status !== 'failed' && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const statusResponse = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+        headers: {
+          'Authorization': `Token ${REPLICATE_API_KEY}`,
         }
+      });
+      
+      result = await statusResponse.json();
+      attempts++;
+      
+      if (attempts % 10 === 0) {
+        console.log(`Style ${styleIndex} - Attempt ${attempts}, status: ${result.status}`);
       }
     }
     
-    console.error('No image in Gemini response');
-    return null;
-    
-  } catch (error) {
-    console.error('Gemini API error:', error);
-    return null;
-  }
-}
-
-async function generateSingleHairstyle(userPhotoBase64: string, styleIndex: number): Promise<string | null> {
-  const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
-  const styleName = HAIRSTYLE_NAMES[styleIndex];
-  
-  const styleDescriptions: Record<number, string> = {
-    0: "classic side part hairstyle with hair neatly combed to one side and a clean defined part line",
-    1: "modern textured crop with short faded sides and textured messy top",
-    2: "slicked back hairstyle with hair combed straight back using gel for a sophisticated look",
-    3: "undercut hairstyle with very short buzzed sides and longer styled hair on top",
-    4: "crew cut military style with hair short all around",
-    5: "spiky textured hairstyle with hair styled upward in spikes"
-  };
-  
-  try {
-    // Use Gemini 3 Pro Image Preview (Nano Banana Pro)
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            role: "user",
-            parts: [
-              {
-                inlineData: {
-                  mimeType: "image/jpeg",
-                  data: base64Data
-                }
-              },
-              {
-                text: `Create 1 image showing me with a ${styleDescriptions[styleIndex]}. Show how I would look with ${styleName} hairstyle.`
-              }
-            ]
-          }],
-          generationConfig: {
-            responseModalities: ["TEXT", "IMAGE"]
-          }
-        })
-      }
-    );
-
-    if (!response.ok) {
-      console.error(`Style ${styleIndex} error:`, await response.text());
-      return null;
-    }
-
-    const data = await response.json();
-    
-    if (data.candidates?.[0]?.content?.parts) {
-      for (const part of data.candidates[0].content.parts) {
-        if (part.inlineData?.data) {
-          return `data:image/png;base64,${part.inlineData.data}`;
-        }
-      }
+    if (result.status === 'succeeded' && result.output) {
+      // InstructPix2Pix returns array of images
+      const outputUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+      console.log(`Style ${styleIndex} succeeded:`, outputUrl);
+      return outputUrl;
     }
     
+    console.error(`Style ${styleIndex} failed:`, result.error || 'Unknown error');
     return null;
+    
   } catch (error) {
     console.error(`Style ${styleIndex} error:`, error);
     return null;
@@ -146,15 +101,15 @@ async function generateSingleHairstyle(userPhotoBase64: string, styleIndex: numb
 
 export async function POST(request: NextRequest) {
   try {
-    if (!GEMINI_API_KEY) {
+    if (!REPLICATE_API_KEY) {
       return NextResponse.json({ 
         success: false, 
-        error: 'GEMINI_API_KEY not configured' 
+        error: 'REPLICATE_API_TOKEN not configured. Add it to Vercel environment variables.' 
       }, { status: 500 });
     }
 
     const body = await request.json();
-    const { userPhoto, styleIndex, mode } = body;
+    const { userPhoto, styleIndex } = body;
 
     if (!userPhoto) {
       return NextResponse.json({ 
@@ -163,27 +118,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Mode 'grid' = single image with all 6 styles (like Gemini app)
-    // Mode 'individual' or default = generate each style separately
-    if (mode === 'grid') {
-      console.log('Generating grid of all 6 hairstyles with Gemini 3 Pro Image...');
-      const gridImage = await generateAllHairstyles(userPhoto);
-      
-      return NextResponse.json({
-        success: !!gridImage,
-        gridImage,
-        message: gridImage ? 'Generated hairstyle grid' : 'Generation failed'
-      });
-    }
-
-    // Generate specific style or all styles individually
+    // Generate specific style or all styles
     const stylesToGenerate = styleIndex !== undefined ? [styleIndex] : [0, 1, 2, 3, 4, 5];
     const results = [];
 
     for (const idx of stylesToGenerate) {
-      console.log(`Generating style ${idx}: ${HAIRSTYLE_NAMES[idx]} with Gemini 3 Pro Image...`);
+      console.log(`Generating style ${idx}: ${HAIRSTYLE_NAMES[idx]} with Replicate...`);
       
-      const imageUrl = await generateSingleHairstyle(userPhoto, idx);
+      const imageUrl = await generateWithReplicate(userPhoto, idx);
       
       results.push({
         styleIndex: idx,
