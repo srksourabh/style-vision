@@ -8,10 +8,19 @@ const GEMINI_IMAGE_MODEL = 'gemini-2.0-flash-exp';
 
 interface HairstyleAnalysis {
   face_shape: string;
-  reasoning: string;
+  face_analysis: {
+    forehead: string;
+    jawline: string;
+    cheekbones: string;
+    face_length: string;
+    symmetry: string;
+  };
+  styling_strategy: string;
   hairstyles: Array<{
     id: number;
     name: string;
+    trend_origin: string;
+    why_it_works: string;
     description: string;
     prompts: {
       front: string;
@@ -88,22 +97,38 @@ async function fetchWithRetry(
   throw new Error('Max retries reached');
 }
 
-// Step 1: Analyze face with bulletproof prompt
+// Step 1: Analyze face with AI-driven hairstyle recommendation
 async function analyzeAndGeneratePrompts(userPhotoBase64: string): Promise<HairstyleAnalysis | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   
-  // BULLETPROOF PROMPT - strict JSON output, no markdown
-  const bulletproofPrompt = `### CONTEXT ###
-You are the world's leading **Face Morphologist and Virtual Stylist**. You are a backend processor for a software application. Your output is read directly by code, so strict formatting is required.
+  // AI-DRIVEN PROMPT - Let Gemini analyze and recommend based on fashion trends
+  const aiDrivenPrompt = `### CONTEXT ###
+You are a world-renowned **Celebrity Hair Stylist and Face Morphologist** with expertise in global fashion trends from Milan, Paris, New York, Tokyo, and Seoul. You have styled A-list celebrities and understand how to match hairstyles to facial geometry using the Golden Ratio principles.
 
-### OBJECTIVE ###
-Analyze the attached user photo and generate a JSON object containing **six (6) distinct hairstyle recommendations** optimized for their facial geometry.
+### YOUR TASK ###
+1. **ANALYZE** the uploaded photo's facial structure in detail:
+   - Measure the face shape (Oval, Round, Square, Diamond, Heart, Oblong, Rectangle)
+   - Assess forehead width and height
+   - Evaluate jawline definition (sharp, soft, angular, rounded)
+   - Note cheekbone prominence
+   - Determine face length-to-width ratio
+   - Check facial symmetry
+
+2. **RECOMMEND** exactly 6 hairstyles that would BEST SUIT this specific face based on:
+   - **Golden Ratio principles** for facial balance
+   - **Current global fashion trends** (2024-2025 runway looks)
+   - **Celebrity stylist techniques** for enhancing features
+   - **Face-flattering geometry** (what to elongate, soften, or add volume to)
+   
+   YOU decide which hairstyles to recommend - choose styles that will genuinely transform and flatter THIS person's unique facial structure.
+
+3. **EXPLAIN** for each style WHY it works for this face (geometric reasoning).
 
 ### CRITICAL INSTRUCTIONS ###
-1. **Analyze** the face shape (Oval, Round, Square, Diamond, Heart, Oblong) based on landmarks.
-2. **Select** 6 modern, distinct hairstyles that complement the face shape.
-3. **Generate** image generation prompts for "Front View" for each style.
-4. **Avoid** sensitive terms. Keep descriptions clinical and geometric (e.g., "features a high fade") rather than biological or anatomical to ensure safety compliance.
+- Do NOT use generic recommendations. Each suggestion must be specifically tailored to THIS face.
+- Consider what features to enhance vs. balance (e.g., strong jaw needs softer top, round face needs height)
+- Include a mix of classic and trendy options
+- Keep descriptions clinical and geometric for safety compliance
 
 ### OUTPUT FORMAT (STRICT) ###
 - Output **ONLY** raw JSON.
@@ -112,23 +137,32 @@ Analyze the attached user photo and generate a JSON object containing **six (6) 
 
 **JSON Schema:**
 {
-  "face_shape": "String",
-  "reasoning": "String explaining why these styles suit this face shape",
+  "face_shape": "Detected face shape",
+  "face_analysis": {
+    "forehead": "Width and height assessment",
+    "jawline": "Shape and definition",
+    "cheekbones": "Prominence level",
+    "face_length": "Long/Medium/Short relative to width",
+    "symmetry": "Symmetry notes"
+  },
+  "styling_strategy": "Overall strategy for this face - what to enhance, balance, or soften",
   "hairstyles": [
     {
       "id": 1,
-      "name": "Hairstyle Name",
-      "description": "Brief description of the style",
+      "name": "Specific Hairstyle Name",
+      "trend_origin": "Where this trend comes from (e.g., Korean Wave, Italian Classic, NYC Street)",
+      "why_it_works": "2-3 sentences explaining geometrically WHY this suits their face shape",
+      "description": "Brief style description",
       "prompts": {
-        "front": "Transform the hair to [style]. Maintain exact facial features unchanged. Professional studio lighting, photorealistic.",
-        "back": "Back view description of the hairstyle"
+        "front": "Transform the hair to [exact style description]. Maintain all facial features exactly unchanged. The hairstyle should [specific details about length, texture, volume placement]. Professional studio lighting, photorealistic, high fashion photography.",
+        "back": "Back view showing [neckline, taper, texture details]"
       }
     }
   ]
 }
 
 ### INPUT ###
-Analyze this photo and provide 6 hairstyle recommendations.`;
+Analyze this person's face and recommend 6 hairstyles that would best suit their unique facial geometry based on current fashion trends and professional styling principles.`;
 
   try {
     const response = await fetchWithRetry(
@@ -139,7 +173,7 @@ Analyze this photo and provide 6 hairstyle recommendations.`;
         body: JSON.stringify({
           contents: [{
             parts: [
-              { text: bulletproofPrompt },
+              { text: aiDrivenPrompt },
               {
                 inline_data: {
                   mime_type: "image/jpeg",
@@ -149,7 +183,7 @@ Analyze this photo and provide 6 hairstyle recommendations.`;
             ]
           }],
           generationConfig: {
-            temperature: 0.7,
+            temperature: 0.8,
             maxOutputTokens: 8192,
           },
           safetySettings: [
@@ -192,11 +226,12 @@ Analyze this photo and provide 6 hairstyle recommendations.`;
 
     // CLEAN THE JSON: Remove markdown code blocks
     const cleanedText = cleanJsonResponse(text);
-    console.log('Cleaned JSON (first 200 chars):', cleanedText.substring(0, 200));
+    console.log('Cleaned JSON (first 300 chars):', cleanedText.substring(0, 300));
 
     // Parse safely
     const analysis = JSON.parse(cleanedText) as HairstyleAnalysis;
     console.log('Face analysis complete:', analysis.face_shape);
+    console.log('Styling strategy:', analysis.styling_strategy);
     return analysis;
 
   } catch (error) {
@@ -289,14 +324,14 @@ async function generateHairstyleWithGemini(
   }
 }
 
-// Fallback prompts if Gemini analysis fails
+// Fallback prompts only used if AI analysis completely fails
 const FALLBACK_STYLES = [
-  { name: "Classic Side Part", prompt: "Transform this person's hair to a classic side part hairstyle. Keep the exact same face unchanged. Hair neatly combed to one side with a clean defined part line. Professional, photorealistic." },
-  { name: "Textured Crop", prompt: "Transform this person's hair to a modern textured crop hairstyle. Keep the exact same face unchanged. Short faded sides with textured messy top. Professional, photorealistic." },
-  { name: "Slicked Back", prompt: "Transform this person's hair to a slicked back hairstyle. Keep the exact same face unchanged. Hair combed straight back with gel for a sophisticated look. Professional, photorealistic." },
-  { name: "Undercut", prompt: "Transform this person's hair to an undercut hairstyle. Keep the exact same face unchanged. Very short buzzed sides with longer styled hair on top. Professional, photorealistic." },
-  { name: "Crew Cut", prompt: "Transform this person's hair to a crew cut hairstyle. Keep the exact same face unchanged. Short military style with hair short all around. Professional, photorealistic." },
-  { name: "Spiky Textured", prompt: "Transform this person's hair to a spiky textured hairstyle. Keep the exact same face unchanged. Hair styled upward in spikes with texture. Professional, photorealistic." }
+  { name: "Modern Textured Style", prompt: "Transform this person's hair to a modern textured hairstyle that complements their face shape. Keep facial features unchanged. Professional, photorealistic." },
+  { name: "Classic Refined Look", prompt: "Transform this person's hair to a classic refined hairstyle suited to their face geometry. Keep facial features unchanged. Professional, photorealistic." },
+  { name: "Trending Fashion Cut", prompt: "Transform this person's hair to a current trending fashion hairstyle that flatters their face. Keep facial features unchanged. Professional, photorealistic." },
+  { name: "Volume Enhanced Style", prompt: "Transform this person's hair to add volume where needed for facial balance. Keep facial features unchanged. Professional, photorealistic." },
+  { name: "Sleek Contemporary", prompt: "Transform this person's hair to a sleek contemporary style suited to their features. Keep facial features unchanged. Professional, photorealistic." },
+  { name: "Natural Textured Look", prompt: "Transform this person's hair to a natural textured look that enhances their face shape. Keep facial features unchanged. Professional, photorealistic." }
 ];
 
 export async function POST(request: NextRequest) {
@@ -315,25 +350,28 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Step 1: Analyze face and get personalized prompts from Gemini
-    console.log('Step 1: Analyzing face with Gemini (bulletproof prompt)...');
+    // Step 1: AI analyzes face and recommends personalized hairstyles
+    console.log('Step 1: AI analyzing face pattern and recommending trend-based hairstyles...');
     const analysis = await analyzeAndGeneratePrompts(userPhoto);
     
-    let stylesToGenerate: Array<{ name: string; prompt: string }>;
+    let stylesToGenerate: Array<{ name: string; prompt: string; whyItWorks?: string; trendOrigin?: string }>;
     let faceAnalysis = null;
 
     if (analysis && analysis.hairstyles?.length >= 6) {
-      console.log('Using Gemini-generated personalized prompts');
+      console.log('AI recommendations received successfully');
       faceAnalysis = {
         shape: analysis.face_shape,
-        reasoning: analysis.reasoning
+        details: analysis.face_analysis,
+        strategy: analysis.styling_strategy
       };
       stylesToGenerate = analysis.hairstyles.map(h => ({
         name: h.name,
-        prompt: h.prompts.front
+        prompt: h.prompts.front,
+        whyItWorks: h.why_it_works,
+        trendOrigin: h.trend_origin
       }));
     } else {
-      console.log('Using fallback prompts (analysis failed or incomplete)');
+      console.log('Using fallback - AI analysis incomplete');
       stylesToGenerate = FALLBACK_STYLES;
     }
 
@@ -342,7 +380,7 @@ export async function POST(request: NextRequest) {
     const results = [];
 
     // Step 2: Generate images with Gemini
-    console.log(`Step 2: Generating ${indicesToGenerate.length} hairstyles with Gemini...`);
+    console.log(`Step 2: Generating ${indicesToGenerate.length} AI-recommended hairstyles...`);
     
     for (const idx of indicesToGenerate) {
       const style = stylesToGenerate[idx] || FALLBACK_STYLES[idx];
@@ -354,6 +392,8 @@ export async function POST(request: NextRequest) {
         styleIndex: idx,
         styleName: style.name,
         image: imageUrl,
+        whyItWorks: style.whyItWorks || null,
+        trendOrigin: style.trendOrigin || null,
         description: analysis?.hairstyles?.[idx]?.description || null,
         error: imageUrl ? null : 'Generation failed - try a different photo'
       });
@@ -372,13 +412,12 @@ export async function POST(request: NextRequest) {
       faceAnalysis,
       results,
       message: successCount > 0 
-        ? `Generated ${successCount}/${results.length} hairstyles`
+        ? `Generated ${successCount}/${results.length} personalized hairstyles`
         : 'Failed to generate styles. Please try a different photo.'
     });
 
   } catch (error) {
     console.error('API error:', error);
-    // Return graceful error, not a crash
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to generate styles. Please try a different photo.'
