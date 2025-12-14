@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Gemini 2.0 Flash with image generation
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
+// Use Gemini 2.0 Flash for analysis
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 export async function POST(request: NextRequest) {
@@ -106,94 +106,102 @@ export async function POST(request: NextRequest) {
 }
 
 function getHairstyleAnalysisPrompt(): string {
-  return `You are an expert hairstylist and facial geometry analyst. Analyze this person's photo carefully.
+  return `You are an expert hairstylist analyzing a client's photo. Provide detailed, personalized haircut recommendations.
 
-CRITICAL ANALYSIS REQUIRED:
-1. FACE SHAPE: Identify precisely (oval, round, square, heart, oblong, diamond, rectangle)
-2. FACIAL FEATURES: 
-   - Jawline (sharp, soft, wide, narrow)
-   - Forehead (high, low, wide, narrow)
-   - Cheekbones (prominent, subtle)
-   - Face length vs width ratio
-3. CURRENT HAIR:
-   - Approximate current length
-   - Hair texture (straight, wavy, curly, coily)
-   - Hair density (thin, medium, thick)
-   - Natural growth pattern
+STEP 1 - DETAILED FACE ANALYSIS:
+Examine the photo carefully and identify:
+- Face shape (round, oval, square, oblong, heart, diamond)
+- Jawline characteristics
+- Forehead width and height
+- Cheekbone prominence
+- Current hair length, texture, density, and condition
 
-IMPORTANT CONSTRAINTS:
-- Only recommend haircuts that REDUCE or MAINTAIN current length (no extensions/additions)
-- Consider what's realistically achievable with their current hair
-- Focus on cuts that complement their specific facial geometry
+STEP 2 - HAIR CUTTING CONSTRAINTS:
+CRITICAL: Only recommend haircuts that can be achieved by CUTTING the current hair.
+- If hair is short, only recommend short styles
+- If hair is medium, recommend short to medium styles
+- If hair is long, any shorter style is possible
+- NEVER suggest styles requiring longer hair than they currently have
 
-Recommend exactly 6 hairstyles ranked by suitability. For each, provide:
-- Specific cutting technique
-- Why it flatters their face shape
-- How it works with their hair texture
+STEP 3 - PERSONALIZED RECOMMENDATIONS:
+Provide exactly 6 haircut recommendations, each specifically tailored to THIS person's:
+- Face geometry (how the cut will balance their features)
+- Current hair properties (texture, density)
+- Achievable results (realistic expectations)
 
-Return ONLY valid JSON:
+Return ONLY valid JSON in this exact format:
 {
-  "faceShape": "specific shape",
+  "faceShape": "detected shape",
   "faceAnalysis": {
-    "jawline": "description",
-    "forehead": "description", 
-    "cheekbones": "description",
-    "faceRatio": "description"
+    "jawline": "specific description",
+    "forehead": "specific description",
+    "cheekbones": "specific description",
+    "overallBalance": "what needs balancing"
   },
   "currentHair": {
-    "estimatedLength": "short/medium/long",
-    "texture": "straight/wavy/curly/coily",
-    "density": "thin/medium/thick"
+    "length": "short/medium/long with inches estimate",
+    "texture": "straight/wavy/curly",
+    "density": "thin/medium/thick",
+    "condition": "assessment"
   },
   "recommendations": [
     {
-      "name": "Specific Hairstyle Name",
-      "cuttingTechnique": "Detailed cutting approach",
-      "description": "Why this suits their face - be specific about geometry",
-      "suitabilityScore": 0.95,
-      "lengthChange": "trim 2 inches / major cut / reshape only",
+      "name": "Specific Haircut Name",
+      "matchScore": 95,
+      "whyItWorks": "2-3 sentences explaining how this cut specifically complements THEIR face shape and features",
+      "cuttingInstructions": "Brief description of the cut for a barber/stylist",
+      "lengthChange": "How much to cut - e.g., 'Trim 1 inch on sides, keep top length'",
       "maintenanceLevel": "Low/Medium/High",
-      "stylingTips": ["tip1", "tip2", "tip3"],
-      "bestFor": ["occasion1", "occasion2"],
-      "visualDescription": "Detailed description of how this would look on them - describe the final result with specific details about length, layers, framing, parting, etc."
+      "growOutGracefully": true,
+      "stylingRequired": "Daily styling needs",
+      "bestAngles": "Which angles this cut flatters most",
+      "avoidIf": "Any conditions where this wouldn't work"
     }
   ],
-  "expertTip": "Personalized advice based on their unique features"
+  "generalAdvice": "Overall personalized advice for this person's hair"
 }`;
 }
 
 function getColorAnalysisPrompt(): string {
-  return `You are an expert hair colorist specializing in color theory and skin tone analysis.
+  return `You are an expert hair colorist analyzing a client's photo for color recommendations.
 
-Analyze this person's photo for:
+ANALYZE:
 1. Skin tone (fair, light, medium, olive, tan, deep)
-2. Undertone (warm/golden, cool/pink, neutral)
+2. Skin undertone (warm/golden, cool/pink, neutral)
 3. Eye color
 4. Natural hair color
-5. Color season (Spring, Summer, Autumn, Winter)
+5. Veins color (if visible - blue=cool, green=warm)
 
-Recommend 6 hair colors that would complement their natural coloring.
-Only recommend colors achievable from their current hair (consider if bleaching would be needed).
+CONSTRAINTS:
+- Consider how drastic a color change would be from their current color
+- Factor in maintenance requirements
+- Consider their skin undertone compatibility
+
+Provide 6 hair color recommendations ranked by suitability.
 
 Return ONLY valid JSON:
 {
-  "skinTone": "specific tone",
-  "undertone": "warm/cool/neutral",
+  "skinAnalysis": {
+    "tone": "specific tone",
+    "undertone": "warm/cool/neutral",
+    "season": "Spring/Summer/Autumn/Winter"
+  },
   "eyeColor": "color",
-  "naturalHairColor": "color",
-  "season": "Spring/Summer/Autumn/Winter",
+  "currentHairColor": "color",
   "recommendations": [
     {
       "colorName": "Specific Color Name",
       "hexCode": "#RRGGBB",
-      "technique": "balayage/highlights/full color/ombre",
-      "description": "Why this complements their coloring",
-      "suitabilityScore": 0.95,
+      "matchScore": 95,
+      "technique": "Full color/Balayage/Highlights/Ombre/etc",
+      "whyItWorks": "How this complements their coloring",
       "maintenanceLevel": "Low/Medium/High",
-      "processingNeeded": "description of salon process",
-      "bestFor": ["benefit1", "benefit2"]
+      "touchUpFrequency": "How often touch-ups needed",
+      "damageLevel": "Minimal/Moderate/Significant",
+      "homeCareTips": ["tip1", "tip2"]
     }
   ],
-  "expertTip": "Personalized color advice"
+  "colorsToAvoid": ["color1", "color2"],
+  "generalAdvice": "Personalized color advice"
 }`;
 }
