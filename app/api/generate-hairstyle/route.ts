@@ -25,6 +25,10 @@ interface HairstyleAnalysis {
     trend_source: string;
     geometric_reasoning: string;
     celebrity_reference: string;
+    stylist_tip: {
+      stylist_name: string;
+      tip: string;
+    };
     description: string;
     prompts: {
       front: string;
@@ -96,13 +100,21 @@ async function fetchWithRetry(
 async function analyzeAndGeneratePrompts(userPhotoBase64: string): Promise<HairstyleAnalysis | null> {
   const base64Data = userPhotoBase64.replace(/^data:image\/\w+;base64,/, '');
   
-  // PURE AI-DRIVEN PROMPT - No predefined hairstyles, AI decides everything
+  // PURE AI-DRIVEN PROMPT with Famous Stylist Tips
   const aiAnalysisPrompt = `### ROLE ###
-You are a world-class **Face Morphologist** and **Celebrity Hair Stylist** with 25+ years of experience styling Hollywood celebrities, Bollywood stars, K-pop idols, and international models. You have deep expertise in:
-- Golden Ratio facial analysis
-- Global fashion trends (Milan, Paris, New York, Tokyo, Seoul, Mumbai)
-- 2024-2025 runway and red carpet hairstyling
-- Face geometry optimization techniques
+You are a world-class **Face Morphologist** and **Celebrity Hair Stylist** with 25+ years of experience. You have trained under and collaborated with the world's most renowned hair stylists including:
+
+**LEGENDARY STYLISTS YOU CHANNEL:**
+- **Javed Habib** (India) - Known for "No Shortcuts to Success", precision cuts, and making styling accessible
+- **Aalim Hakim** (India) - Bollywood's favorite, known for transformative celebrity makeovers
+- **Vidal Sassoon** (UK) - Revolutionary geometric cuts, "If you don't look good, we don't look good"
+- **Oribe Canales** (USA) - Hollywood red carpet master, texture and movement expert
+- **Rossano Ferretti** (Italy) - "The Method" invisible haircut technique, natural elegance
+- **Sam McKnight** (UK) - Princess Diana's stylist, British fashion icon maker
+- **Guido Palau** (UK) - Fashion week mastermind, avant-garde trendsetter
+- **Jen Atkin** (USA) - Kardashian stylist, social media hair icon
+- **Yuko Yamashita** (Japan) - Japanese straightening pioneer, Asian hair specialist
+- **Kim Sun-young** (Korea) - K-beauty hair trends, glass hair technique
 
 ### TASK ###
 **Step 1: MEASURE the face in the uploaded photo**
@@ -124,13 +136,9 @@ What should the hairstyle achieve for THIS specific face?
 - Where to add/reduce visual volume?
 
 **Step 4: RECOMMEND 6 hairstyles**
-Based on YOUR expert analysis and current global fashion trends, recommend exactly 6 hairstyles that would BEST SUIT this person's unique facial geometry.
+Based on YOUR expert analysis, current global fashion trends, and wisdom from legendary stylists, recommend exactly 6 hairstyles that would BEST SUIT this person's unique facial geometry.
 
-YOU choose the styles - select what will genuinely look best on THIS face based on:
-- Current fashion week trends (2024-2025)
-- Celebrity styling techniques
-- Face-flattering geometry principles
-- Cultural style influences (Western, Korean, European, etc.)
+For EACH hairstyle, include a relevant tip from one of the famous stylists listed above - choose the stylist whose expertise best matches that particular style recommendation.
 
 ### OUTPUT FORMAT (STRICT JSON ONLY) ###
 Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
@@ -151,10 +159,14 @@ Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
   "hairstyles": [
     {
       "id": 1,
-      "name": "Your recommended style name",
-      "trend_source": "Where this trend originates (e.g., Korean Fashion, Italian Runway, NYC Street Style)",
-      "geometric_reasoning": "Why this specific style works for their face measurements - be specific about how it balances/enhances their features",
-      "celebrity_reference": "A celebrity with similar face shape who rocks this style",
+      "name": "AI recommended style name",
+      "trend_source": "Origin of this trend (Korean Wave, Italian Runway, Bollywood Glam, etc.)",
+      "geometric_reasoning": "Why this specific style works for their face measurements",
+      "celebrity_reference": "A celebrity with similar face shape who wears this style well",
+      "stylist_tip": {
+        "stylist_name": "Name of famous stylist (Javed Habib, Aalim Hakim, Vidal Sassoon, etc.)",
+        "tip": "A relevant styling tip or philosophy from this stylist that applies to this look"
+      },
       "description": "Detailed description of the hairstyle",
       "prompts": {
         "front": "Transform the hair in this photo to [detailed style description including length, texture, volume placement, parting, finishing]. Keep the face completely unchanged. Professional studio photography, photorealistic, fashion magazine quality.",
@@ -226,7 +238,7 @@ Output ONLY raw JSON. No markdown, no code blocks, no explanation text.
     const analysis = JSON.parse(cleanedText) as HairstyleAnalysis;
     console.log('Face Shape:', analysis.face_shape);
     console.log('Styling Goals:', analysis.styling_goals);
-    console.log('Recommended Styles:', analysis.hairstyles.map(h => h.name).join(', '));
+    console.log('Recommended Styles:', analysis.hairstyles.map(h => `${h.name} (Tip by ${h.stylist_tip?.stylist_name})`).join(', '));
     return analysis;
 
   } catch (error) {
@@ -323,7 +335,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: AI measures face and recommends personalized hairstyles
-    console.log('Step 1: AI measuring face geometry and selecting best hairstyles...');
+    console.log('Step 1: AI measuring face geometry and consulting world-famous stylists...');
     const analysis = await analyzeAndGeneratePrompts(userPhoto);
     
     if (!analysis || !analysis.hairstyles?.length) {
@@ -345,6 +357,7 @@ export async function POST(request: NextRequest) {
       geometricReasoning: h.geometric_reasoning,
       trendSource: h.trend_source,
       celebrityReference: h.celebrity_reference,
+      stylistTip: h.stylist_tip,
       description: h.description
     }));
 
@@ -370,6 +383,7 @@ export async function POST(request: NextRequest) {
         geometricReasoning: style.geometricReasoning,
         trendSource: style.trendSource,
         celebrityReference: style.celebrityReference,
+        stylistTip: style.stylistTip,
         description: style.description,
         error: imageUrl ? null : 'Generation failed'
       });
@@ -387,7 +401,7 @@ export async function POST(request: NextRequest) {
       faceAnalysis,
       results,
       message: successCount > 0 
-        ? `Generated ${successCount} personalized hairstyles based on your face analysis`
+        ? `Generated ${successCount} personalized hairstyles with expert stylist tips`
         : 'Could not generate styles. Please try a different photo.'
     });
 
