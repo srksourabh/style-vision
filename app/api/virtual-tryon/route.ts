@@ -70,17 +70,20 @@ export async function POST(request: NextRequest) {
       expertTip: parsed.expertTip || parsed.generalAdvice || ''
     };
 
-    const recommendations = (parsed.recommendations || []).map((rec: Record<string, unknown>) => ({
-      name: rec.name || 'Classic Cut',
-      description: rec.whyItWorks || rec.description || '',
-      suitabilityScore: (rec.matchScore || rec.suitabilityScore || 80) / 100,
-      maintenanceLevel: rec.maintenanceLevel || 'Medium',
-      lengthChange: rec.lengthChange || '',
-      cuttingTechnique: rec.cuttingInstructions || rec.cuttingTechnique || '',
-      stylingTips: rec.stylingTips || [],
-      bestFor: rec.bestFor || [],
-      dailyStyling: rec.stylingRequired || ''
-    }));
+    const recommendations = (parsed.recommendations || []).map((rec: Record<string, unknown>) => {
+      const score = Number(rec.matchScore || rec.suitabilityScore || 80);
+      return {
+        name: rec.name || 'Classic Cut',
+        description: rec.whyItWorks || rec.description || '',
+        suitabilityScore: score / 100,
+        maintenanceLevel: rec.maintenanceLevel || 'Medium',
+        lengthChange: rec.lengthChange || '',
+        cuttingTechnique: rec.cuttingInstructions || rec.cuttingTechnique || '',
+        stylingTips: rec.stylingTips || [],
+        bestFor: rec.bestFor || [],
+        dailyStyling: rec.stylingRequired || ''
+      };
+    });
 
     return NextResponse.json({
       success: true,
